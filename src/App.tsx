@@ -2,6 +2,11 @@ import { useState, useCallback, useEffect } from 'react';
 import { Module, DocRecord } from './types';
 import { getHistory } from './utils/storage';
 import { authService, ActiveSession } from './utils/authService';
+import {
+  loadServices, loadAds, loadSite, onSettingsChange,
+  ServiceConfig, AdItem, SiteSettings,
+  isScannerFreeNow, incrementScanCount,
+} from './utils/siteSettings';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import PublicWriter from './components/PublicWriter';
@@ -17,7 +22,6 @@ import UserPortalLogin from './components/UserPortalLogin';
 import InvoiceGenerator from './components/InvoiceGenerator';
 import HomePage from './components/HomePage';
 import ServicePage from './pages/ServicePage';
-import HomepageControl from './components/HomepageControl';
 import GeneralSettings from './components/GeneralSettings';
 import { applySEO, SEO_PAGES } from './seo/SEOHead';
 import { recordVisit } from './utils/analytics';
@@ -26,23 +30,11 @@ type ServiceKey = 'procedures' | 'scanner' | 'writer' | 'cv' | 'letters' | 'invo
 type AppRoute = 'home' | 'admin' | 'user' | 'admin-login' | 'user-login' | 'service-page';
 type PublicModule = 'admin-procedures' | 'cin-scanner';
 
-const SCAN_USES_KEY = 'moas_scan_free_uses';
-const SCAN_MAX_FREE = 5;
-
-export function getScanUsesLeft(): number {
-  const used = parseInt(localStorage.getItem(SCAN_USES_KEY) ?? '0', 10);
-  return Math.max(0, SCAN_MAX_FREE - used);
-}
-export function incrementScanUse() {
-  const used = parseInt(localStorage.getItem(SCAN_USES_KEY) ?? '0', 10);
-  localStorage.setItem(SCAN_USES_KEY, String(used + 1));
-}
-export { SCAN_MAX_FREE, SCAN_USES_KEY };
+/* Scan helpers now come from siteSettings.ts — dynamic admin config */
 
 function getInitialRoute(): AppRoute {
   const hash = window.location.hash;
   if (hash === '#/control-center' || hash.startsWith('#/control-center')) return 'admin-login';
-  // Check for service page routes
   const serviceRoutes = ['#/procedures','#/scanner','#/writer','#/cv','#/letters','#/invoices'];
   if (serviceRoutes.some(r => hash === r || hash.startsWith(r + '/'))) return 'service-page';
   return 'home';
@@ -67,32 +59,26 @@ const BOTTOM_NAV: { id: Module; icon: string; label: string }[] = [
   { id: 'admin-procedures',  icon: '🏛️', label: 'مساطر' },
 ];
 
-/* ── Public AdminProcedures wrapper (no auth needed) ── */
-function PublicWrapper({ module, onLogin, onRegister, scanUsesLeft, onScanUpload, onGoHome }: {
+/* ── Public wrapper (no auth needed) ── */
+function PublicWrapper({ module, onLogin, onRegister, scanUsesLeft, freeMax, onScanUpload, onGoHome }: {
   module: PublicModule;
   onLogin: () => void;
   onRegister: () => void;
   scanUsesLeft: number;
-  onScanUpload: () => boolean; // returns false if limit reached
+  freeMax: number;
+  onScanUpload: () => boolean;
   onGoHome: () => void;
 }) {
   return (
     <div style={{ minHeight: '100vh', background: module === 'cin-scanner' ? '#070d1a' : '#f4f6fa', direction: 'rtl', fontFamily: "'Cairo', sans-serif" }}>
-      {/* Top bar */}
       <header style={{
         background: 'linear-gradient(135deg,#0f2744,#1a3a5c)',
         padding: '0 16px', height: 56,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         position: 'sticky', top: 0, zIndex: 100,
-        boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
-        gap: 8,
+        boxShadow: '0 2px 12px rgba(0,0,0,0.2)', gap: 8,
       }}>
-        {/* Logo — clickable → home */}
-        <button onClick={onGoHome} style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-          flexShrink: 0,
-        }}>
+        <button onClick={onGoHome} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#c8962c,#e8b84b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>⚜️</div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ color: 'white', fontWeight: 800, fontSize: 12, lineHeight: 1.2 }}>مكتب الخدمات</div>
@@ -100,11 +86,8 @@ function PublicWrapper({ module, onLogin, onRegister, scanUsesLeft, onScanUpload
           </div>
         </button>
 
-        {/* Scan uses badge */}
         {module === 'cin-scanner' && (
-          <div style={{
-            flex: 1, display: 'flex', justifyContent: 'center',
-          }}>
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
             <div style={{
               background: scanUsesLeft > 0 ? 'rgba(34,211,238,0.15)' : 'rgba(220,38,38,0.2)',
               border: `1px solid ${scanUsesLeft > 0 ? 'rgba(34,211,238,0.3)' : 'rgba(220,38,38,0.4)'}`,
@@ -114,31 +97,17 @@ function PublicWrapper({ module, onLogin, onRegister, scanUsesLeft, onScanUpload
               display: 'flex', alignItems: 'center', gap: 6,
             }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: scanUsesLeft > 0 ? '#22d3ee' : '#ef4444', flexShrink: 0 }} />
-              {scanUsesLeft > 0 ? `${scanUsesLeft} / ${SCAN_MAX_FREE} استخدامات متبقية` : 'انتهت الاستخدامات المجانية'}
+              {scanUsesLeft > 0 ? `${scanUsesLeft} / ${freeMax} استخدامات متبقية مجاناً` : 'انتهت الاستخدامات المجانية'}
             </div>
           </div>
         )}
 
-        {/* Auth buttons */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-          <button onClick={onGoHome} style={{
-            padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.15)',
-            background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', fontSize: 11,
-            cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4,
-          }}>🏠 الرئيسية</button>
-          <button onClick={onLogin} style={{
-            padding: '5px 12px', borderRadius: 7, border: '1.5px solid rgba(255,255,255,0.2)',
-            background: 'transparent', color: 'white', fontSize: 11, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}>دخول</button>
-          <button onClick={onRegister} style={{
-            padding: '5px 12px', borderRadius: 7, border: 'none',
-            background: 'linear-gradient(135deg,#c8962c,#e8b84b)', color: '#0f2744',
-            fontSize: 11, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
-          }}>تسجيل</button>
+          <button onClick={onGoHome} style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>🏠 الرئيسية</button>
+          <button onClick={onLogin} style={{ padding: '5px 12px', borderRadius: 7, border: '1.5px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>دخول</button>
+          <button onClick={onRegister} style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: 'linear-gradient(135deg,#c8962c,#e8b84b)', color: '#0f2744', fontSize: 11, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>تسجيل</button>
         </div>
       </header>
-
       <div>
         {module === 'admin-procedures' && <AdminProcedures />}
         {module === 'cin-scanner' && (
@@ -156,8 +125,9 @@ function PublicWrapper({ module, onLogin, onRegister, scanUsesLeft, onScanUpload
   );
 }
 
-// (LockedModuleGate removed — handled inline per module)
-
+/* ════════════════════════════════════════════
+   MAIN APP
+════════════════════════════════════════════ */
 export function App() {
   const [route, setRoute]               = useState<AppRoute>(getInitialRoute);
   const [adminSession, setAdminSession] = useState<ActiveSession | null>(() => authService.getAdminSession());
@@ -166,21 +136,35 @@ export function App() {
   const [history, setHistory]           = useState<DocRecord[]>(() => getHistory());
   const [pendingCount, setPendingCount] = useState(0);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
-  const [scanUsesLeft, setScanUsesLeft] = useState(getScanUsesLeft);
+  const [scanUsesLeft, setScanUsesLeft] = useState(() => isScannerFreeNow().usesLeft);
   const [loginDefaultTab, setLoginDefaultTab] = useState<'login' | 'register' | 'forgot'>('login');
-
-  // Public module (no auth) state
   const [publicModule, setPublicModule] = useState<PublicModule | null>(null);
-
-  // Service page state
   const [activeSvcPage, setActiveSvcPage] = useState<ServiceKey>(() => getServiceFromHash());
+
+  /* ── GLOBAL SETTINGS STATE (single source of truth) ── */
+  const [serviceConfigs, setServiceConfigs] = useState<ServiceConfig[]>(() => loadServices());
+  const [siteAds, setSiteAds]               = useState<AdItem[]>(() => loadAds());
+  const [siteData, setSiteData]             = useState<SiteSettings>(() => loadSite());
+
+  /* ── Listen for settings changes from GeneralSettings ── */
+  /* App.tsx stays mounted always → this listener is always active ── */
+  useEffect(() => {
+    const unsub = onSettingsChange((type) => {
+      if (type === 'services') {
+        setServiceConfigs(loadServices());
+        // Refresh scan uses left based on new admin config
+        setScanUsesLeft(isScannerFreeNow().usesLeft);
+      }
+      if (type === 'ads')  setSiteAds(loadAds());
+      if (type === 'site') setSiteData(loadSite());
+    });
+    return unsub;
+  }, []);
 
   const session = route === 'admin' ? adminSession : userSession;
 
   /* Apply SEO on mount */
-  useEffect(() => {
-    applySEO(SEO_PAGES.home);
-  }, []);
+  useEffect(() => { applySEO(SEO_PAGES.home); }, []);
 
   /* Auto-refresh session */
   useEffect(() => {
@@ -215,8 +199,20 @@ export function App() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Record visit once on app mount
   useEffect(() => { recordVisit(); }, []);
+
+  /* ── Auto-redirect authenticated users ── */
+  useEffect(() => {
+    if (userSession && (route === 'user-login' || route === 'home')) {
+      setRoute('user');
+    }
+  }, [userSession, route]);
+
+  useEffect(() => {
+    if (adminSession && route === 'admin-login') {
+      setRoute('admin');
+    }
+  }, [adminSession, route]);
 
   const refreshHistory = useCallback(() => setHistory(getHistory()), []);
   const navigate = useCallback((m: Module) => { setActiveModule(m); setSidebarOpen(false); setPublicModule(null); }, []);
@@ -237,17 +233,17 @@ export function App() {
     setRoute('home');
   }
 
-  // Homepage → procedures (public, no auth)
   function handlePublicProcedures() {
     setPublicModule('admin-procedures');
     setRoute('home');
   }
 
-  // Homepage → scan studio (public, limited uses)
   function handlePublicScan() {
-    if (scanUsesLeft <= 0) {
-      // redirect to login
+    const { allowed, requiresLogin } = isScannerFreeNow();
+    // If admin disabled free access → redirect to login immediately
+    if (requiresLogin || !allowed) {
       setPublicModule(null);
+      setLoginDefaultTab('register');
       setRoute('user-login');
       return;
     }
@@ -255,13 +251,12 @@ export function App() {
     setRoute('home');
   }
 
-  // Called when user attempts to upload in public Scan Studio
-  // Returns true if allowed, false if limit reached
   function handleScanUploadAttempt(): boolean {
-    const left = getScanUsesLeft();
-    if (left <= 0) return false;
-    incrementScanUse();
-    setScanUsesLeft(getScanUsesLeft());
+    const { allowed } = isScannerFreeNow();
+    if (!allowed) return false;
+    incrementScanCount();
+    // Re-read from siteSettings (uses admin-configured freeUses)
+    setScanUsesLeft(isScannerFreeNow().usesLeft);
     return true;
   }
 
@@ -291,27 +286,24 @@ export function App() {
   }
 
   function launchServiceTool(key: ServiceKey) {
-    if (key === 'procedures') { handlePublicProcedures(); return; }
-    if (key === 'scanner')    { handlePublicScan(); return; }
-    // locked tools → register
+    // Check if service is enabled at all
+    const cfg = serviceConfigs.find(s => s.key === key);
+    if (cfg && !cfg.enabled) return; // service disabled by admin — do nothing
+
+    if (key === 'procedures') {
+      // Check if procedures requires login
+      if (cfg && !cfg.freeAccess) { goToRegister(); return; }
+      handlePublicProcedures(); return;
+    }
+    if (key === 'scanner') { handlePublicScan(); return; }
     goToRegister();
   }
 
   /* ── ROUTING ── */
 
-  // If user already has a valid session → send to app directly
-  if ((route === 'user-login' || route === 'home') && userSession && route !== 'user' as string) {
-    setRoute('user');
-  }
-  if ((route === 'admin-login' || route === 'home') && adminSession && route !== 'admin' as string) {
-    setRoute('admin');
-  }
-
-  // Admin control center
   if ((route === 'admin-login' || route === 'admin') && !adminSession)
-    return <AdminLogin onLogin={handleAdminLogin} onGoToUser={() => { setRoute('home'); }} onGoHome={goToHome} />;
+    return <AdminLogin onLogin={handleAdminLogin} onGoToUser={() => setRoute('home')} onGoHome={goToHome} />;
 
-  // User login / register
   if (route === 'user-login' && !userSession)
     return <UserPortalLogin
       onLogin={handleUserLogin}
@@ -320,7 +312,6 @@ export function App() {
       defaultTab={loginDefaultTab}
     />;
 
-  // Authenticated admin
   if (route === 'admin' && adminSession) {
     return <AuthenticatedApp
       session={adminSession} route="admin"
@@ -330,10 +321,10 @@ export function App() {
       setSidebarOpen={setSidebarOpen} onLogout={handleLogout}
       onSwitchToUser={() => setRoute('user')}
       onGoHome={goToHome}
+      siteData={siteData}
     />;
   }
 
-  // Authenticated user
   if (route === 'user' && userSession) {
     return <AuthenticatedApp
       session={userSession} route="user"
@@ -343,22 +334,23 @@ export function App() {
       setSidebarOpen={setSidebarOpen} onLogout={handleLogout}
       onSwitchToUser={() => {}}
       onGoHome={goToHome}
+      siteData={siteData}
     />;
   }
 
-  // Public module view (no auth)
   if (publicModule) {
+    const scanCfg = isScannerFreeNow();
     return <PublicWrapper
       module={publicModule}
       onLogin={goToLogin}
       onRegister={goToRegister}
       scanUsesLeft={scanUsesLeft}
+      freeMax={scanCfg.freeUses}
       onScanUpload={handleScanUploadAttempt}
       onGoHome={goToHome}
     />;
   }
 
-  // Service page route
   if (route === 'service-page') {
     return (
       <ServicePage
@@ -372,7 +364,7 @@ export function App() {
     );
   }
 
-  // Homepage (default)
+  // Homepage (default) — receives live settings from App state
   return <HomePage
     onLogin={goToLogin}
     onRegister={goToRegister}
@@ -380,6 +372,9 @@ export function App() {
     onScanStudio={handlePublicScan}
     scanUsesLeft={scanUsesLeft}
     onServicePage={goToServicePage}
+    serviceConfigs={serviceConfigs}
+    ads={siteAds}
+    site={siteData}
   />;
 }
 
@@ -399,6 +394,7 @@ interface AuthAppProps {
   onLogout: () => void;
   onSwitchToUser: () => void;
   onGoHome?: () => void;
+  siteData: SiteSettings;
 }
 
 function AuthenticatedApp({
@@ -431,7 +427,6 @@ function AuthenticatedApp({
           </div>
 
           <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {/* Home button */}
             <button
               onClick={onGoHome}
               title="الصفحة الرئيسية"
@@ -518,8 +513,7 @@ function AuthenticatedApp({
           {activeModule === 'invoice-generator'    && <InvoiceGenerator />}
           {activeModule === 'user-management'      && isAdmin && <UserManagement session={session} />}
           {activeModule === 'registration-manager' && isAdmin && <RegistrationManager session={session} />}
-          {activeModule === 'homepage-control'     && isAdmin && <HomepageControl />}
-          {activeModule === 'general-settings'    && isAdmin && <GeneralSettings />}
+          {activeModule === 'general-settings'     && isAdmin && <GeneralSettings />}
         </div>
 
         {activeModule !== 'dashboard' &&

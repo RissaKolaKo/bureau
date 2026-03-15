@@ -1,94 +1,17 @@
 /* ═══════════════════════════════════════════════════════════════
    GENERAL SETTINGS — Unified Admin Control Panel
-   Tabs: Services · Ads · Homepage · Site Settings
+   Uses shared siteSettings store for real-time sync with HomePage
    ═══════════════════════════════════════════════════════════════ */
 import { useState, useRef } from 'react';
+import {
+  ServiceConfig, AdItem, AdPosition, SiteSettings,
+  DEFAULT_SERVICES,
+  loadServices, saveServices,
+  loadAds, saveAds,
+  loadSite, saveSite,
+} from '../utils/siteSettings';
 
-/* ─── Types ─── */
-interface ServiceConfig {
-  key: string;
-  nameAr: string;
-  nameFr: string;
-  icon: string;
-  enabled: boolean;
-  visible: boolean;
-  freeAccess: boolean;
-  freeUses: number;
-  color: string;
-}
-
-interface AdItem {
-  id: string;
-  position: AdPosition;
-  type: 'image' | 'html';
-  content: string;
-  link?: string;
-  alt?: string;
-  enabled: boolean;
-  createdAt: string;
-  label: string;
-}
-
-type AdPosition =
-  | 'hero-top' | 'hero-bottom'
-  | 'services-top' | 'services-bottom'
-  | 'how-it-works' | 'testimonials'
-  | 'faq' | 'footer-top' | 'navbar-banner';
-
-interface SiteSettings {
-  siteName: string;
-  siteNameFr: string;
-  slogan: string;
-  sloganFr: string;
-  logo: string;
-  primaryColor: string;
-  accentColor: string;
-  heroTitle: string;
-  heroSubtitle: string;
-  heroTitleFr: string;
-  showStats: boolean;
-  showTestimonials: boolean;
-  showFaq: boolean;
-  showHowItWorks: boolean;
-  footerText: string;
-  contactEmail: string;
-  contactPhone: string;
-  address: string;
-  city: string;
-  maintenanceMode: boolean;
-  maintenanceMessage: string;
-  googleAnalyticsId: string;
-  facebookPixelId: string;
-}
-
-/* ─── Keys ─── */
-const SERVICES_KEY = 'moas_service_config';
-const ADS_KEY = 'moas_ads';
-const SITE_KEY = 'moas_site_settings';
-
-/* ─── Defaults ─── */
-const DEFAULT_SERVICES: ServiceConfig[] = [
-  { key:'procedures',  nameAr:'المساطر الإدارية', nameFr:'Procédures Administratives', icon:'🏛️', enabled:true, visible:true, freeAccess:true,  freeUses:0,  color:'#dc2626' },
-  { key:'scanner',     nameAr:'Scan Studio',       nameFr:'Scanner CIN',                icon:'🪪', enabled:true, visible:true, freeAccess:true,  freeUses:5,  color:'#d97706' },
-  { key:'writer',      nameAr:'الكاتب العمومي',    nameFr:'Rédacteur Public',           icon:'✍️', enabled:true, visible:true, freeAccess:false, freeUses:0,  color:'#2563a8' },
-  { key:'cv',          nameAr:'مولّد السيرة',       nameFr:'Générateur de CV',           icon:'📄', enabled:true, visible:true, freeAccess:false, freeUses:0,  color:'#059669' },
-  { key:'letters',     nameAr:'الرسائل الفرنسية',  nameFr:'Lettres Françaises',         icon:'📝', enabled:true, visible:true, freeAccess:false, freeUses:0,  color:'#7c3aed' },
-  { key:'invoices',    nameAr:'الفواتير والحسابات',nameFr:'Factures & Devis',           icon:'🧾', enabled:true, visible:true, freeAccess:false, freeUses:0,  color:'#059669' },
-];
-
-const DEFAULT_SITE: SiteSettings = {
-  siteName:'مكتب الخدمات', siteNameFr:'Bureau de Services',
-  slogan:'خدماتكم الإدارية بسهولة وسرعة', sloganFr:'Vos services administratifs, simples et rapides',
-  logo:'⚜️', primaryColor:'#0f2744', accentColor:'#c8962c',
-  heroTitle:'مكتب الخدمات الإدارية', heroSubtitle:'خدماتكم الإدارية بسهولة وسرعة',
-  heroTitleFr:'Bureau de Services Numériques Marocain',
-  showStats:true, showTestimonials:true, showFaq:true, showHowItWorks:true,
-  footerText:'جميع الحقوق محفوظة © 2025 مكتب الخدمات',
-  contactEmail:'', contactPhone:'', address:'', city:'الرباط',
-  maintenanceMode:false, maintenanceMessage:'الموقع في وضع الصيانة، سنعود قريباً',
-  googleAnalyticsId:'', facebookPixelId:'',
-};
-
+/* ─── AD_POSITIONS defined locally (not from siteSettings) ─── */
 const AD_POSITIONS: { value: AdPosition; label: string; labelFr: string }[] = [
   { value:'navbar-banner',   label:'شريط الناف بار',      labelFr:'Bannière Navbar'        },
   { value:'hero-top',        label:'فوق Hero Section',     labelFr:'Au-dessus du Hero'      },
@@ -101,32 +24,19 @@ const AD_POSITIONS: { value: AdPosition; label: string; labelFr: string }[] = [
   { value:'footer-top',      label:'فوق الـ Footer',        labelFr:'Au-dessus du Footer'    },
 ];
 
-/* ═══════════════ helpers ═══════════════ */
-function loadServices(): ServiceConfig[] {
-  try { return JSON.parse(localStorage.getItem(SERVICES_KEY) || '') as ServiceConfig[]; }
-  catch { return DEFAULT_SERVICES; }
-}
-function saveServices(s: ServiceConfig[]) { localStorage.setItem(SERVICES_KEY, JSON.stringify(s)); }
+/* ─── Re-export types so other files can import from here ─── */
+export type { ServiceConfig, AdItem, AdPosition, SiteSettings };
 
-function loadAds(): AdItem[] {
-  try { return JSON.parse(localStorage.getItem(ADS_KEY) || '[]') as AdItem[]; }
-  catch { return []; }
-}
-function saveAds(a: AdItem[]) { localStorage.setItem(ADS_KEY, JSON.stringify(a)); }
-
-function loadSite(): SiteSettings {
-  try { return { ...DEFAULT_SITE, ...JSON.parse(localStorage.getItem(SITE_KEY) || '') } as SiteSettings; }
-  catch { return DEFAULT_SITE; }
-}
-function saveSite(s: SiteSettings) { localStorage.setItem(SITE_KEY, JSON.stringify(s)); }
-
-/* ─── UI primitives ─── */
+/* ─── UI color palette ─── */
 const C = {
   primary: '#0f2744', accent: '#c8962c', border: '#e2e8f0',
   cardBg: '#fff', pageBg: '#f4f6fa', danger: '#dc2626',
   success: '#16a34a', warn: '#d97706',
 };
 
+
+
+/* ─── UI primitives ─── */
 function Toggle({ value, onChange, color = C.success }: { value: boolean; onChange: (v: boolean) => void; color?: string }) {
   return (
     <button onClick={() => onChange(!value)} style={{
@@ -187,14 +97,33 @@ function Input({ label, value, onChange, type = 'text', placeholder }: { label?:
 function ServicesTab() {
   const [services, setServices] = useState<ServiceConfig[]>(loadServices);
   const [saved, setSaved] = useState(false);
+  const [_dirty, setDirty] = useState(false);
 
+  /* Save immediately on every change — dispatches custom event to App.tsx listener */
   function update(key: string, field: keyof ServiceConfig, val: unknown) {
-    setServices(prev => prev.map(s => s.key === key ? { ...s, [field]: val } : s));
+    setServices(prev => {
+      const updated = prev.map(s => s.key === key ? { ...s, [field]: val } : s);
+      saveServices(updated); // ← immediate save + notify
+      return updated;
+    });
+    setDirty(true);
     setSaved(false);
   }
 
-  function save() { saveServices(services); setSaved(true); setTimeout(() => setSaved(false), 2000); }
-  function reset() { setServices(DEFAULT_SERVICES); saveServices(DEFAULT_SERVICES); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+  function save() {
+    saveServices(services);
+    setSaved(true);
+    setDirty(false);
+    setTimeout(() => setSaved(false), 3000);
+  }
+
+  function reset() {
+    setServices(DEFAULT_SERVICES);
+    saveServices(DEFAULT_SERVICES);
+    setSaved(true);
+    setDirty(false);
+    setTimeout(() => setSaved(false), 3000);
+  }
 
   const stats = {
     enabled: services.filter(s => s.enabled).length,
@@ -219,6 +148,14 @@ function ServicesTab() {
             <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>{s.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* Info banner */}
+      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 16 }}>✅</span>
+        <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>
+          كل تغيير يُحفظ فوراً تلقائياً — الصفحة الرئيسية تتحدث عند العودة إليها. اضغط "حفظ" للتأكيد.
+        </span>
       </div>
 
       {/* Services list */}
@@ -262,7 +199,7 @@ function ServicesTab() {
                 <Toggle value={svc.freeAccess} onChange={v => update(svc.key, 'freeAccess', v)} color={C.accent} />
               </div>
 
-              {/* Free uses (only if freeAccess + > 0 default) */}
+              {/* Free uses (only if freeAccess) */}
               {svc.freeAccess && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                   <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b' }}>عدد مجاني</span>
@@ -287,10 +224,13 @@ function ServicesTab() {
       ))}
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10, alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
+          التغييرات محفوظة تلقائياً عند كل تعديل
+        </span>
         <Btn onClick={reset} color="#94a3b8" small>↺ إعادة الضبط</Btn>
         <Btn onClick={save} color={saved ? C.success : C.primary}>
-          {saved ? '✅ تم الحفظ' : '💾 حفظ إعدادات الخدمات'}
+          {saved ? '✅ تم الحفظ بنجاح' : '💾 تأكيد الحفظ'}
         </Btn>
       </div>
     </div>
@@ -331,19 +271,24 @@ function AdsTab() {
       const newAd: AdItem = { ...form, id: Date.now().toString(), createdAt: new Date().toISOString() };
       updated = [...ads, newAd];
     }
-    setAds(updated); saveAds(updated);
-    setShowForm(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
+    setAds(updated);
+    saveAds(updated); // ← dispatches custom event
+    setShowForm(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   }
 
   function toggleAd(id: string) {
     const updated = ads.map(a => a.id === id ? { ...a, enabled: !a.enabled } : a);
-    setAds(updated); saveAds(updated);
+    setAds(updated);
+    saveAds(updated); // ← dispatches custom event immediately
   }
 
   function deleteAd(id: string) {
     if (!confirm('حذف هذا الإعلان؟')) return;
     const updated = ads.filter(a => a.id !== id);
-    setAds(updated); saveAds(updated);
+    setAds(updated);
+    saveAds(updated); // ← dispatches custom event
   }
 
   function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -354,12 +299,12 @@ function AdsTab() {
     reader.readAsDataURL(file);
   }
 
-  const posLabel = (pos: AdPosition) => AD_POSITIONS.find(p => p.value === pos)?.label ?? pos;
+  const posLabel = (pos: AdPosition) => AD_POSITIONS.find((p: typeof AD_POSITIONS[0]) => p.value === pos)?.label ?? pos;
 
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '6px 12px', fontSize: 11, color: C.success, fontWeight: 700 }}>
             ✅ {ads.filter(a => a.enabled).length} مفعّل
@@ -369,6 +314,14 @@ function AdsTab() {
           </div>
         </div>
         <Btn onClick={openNew} color={C.accent}>+ إضافة إعلان</Btn>
+      </div>
+
+      {/* Info banner */}
+      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 16 }}>ℹ️</span>
+        <span style={{ fontSize: 11, color: '#1e40af', fontWeight: 700 }}>
+          الإعلانات تُطبَّق فوراً على الصفحة الرئيسية عند التفعيل/التعطيل — لا حاجة لإعادة تحميل الصفحة
+        </span>
       </div>
 
       {/* Empty state */}
@@ -422,7 +375,6 @@ function AdsTab() {
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: C.cardBg, borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-            {/* Modal Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 20px', borderBottom: `1px solid ${C.border}`, background: C.primary }}>
               <span style={{ fontWeight: 800, color: '#fff', fontSize: 15 }}>{editId ? '✏️ تعديل الإعلان' : '+ إضافة إعلان جديد'}</span>
               <button onClick={() => setShowForm(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 30, height: 30, borderRadius: 8, cursor: 'pointer', fontSize: 16 }}>✕</button>
@@ -493,7 +445,6 @@ function AdsTab() {
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '14px 20px', borderTop: `1px solid ${C.border}`, background: '#fafbfc' }}>
               <Btn onClick={() => setShowForm(false)} color="#94a3b8" small>إلغاء</Btn>
               <Btn onClick={handleSave} color={C.accent}>{editId ? '💾 حفظ التعديلات' : '➕ إضافة الإعلان'}</Btn>
@@ -504,7 +455,7 @@ function AdsTab() {
 
       {saved && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: C.success, color: '#fff', padding: '10px 24px', borderRadius: 24, fontWeight: 700, fontSize: 13, zIndex: 2000, boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
-          ✅ تم حفظ الإعلانات
+          ✅ تم حفظ الإعلانات — الصفحة الرئيسية محدَّثة
         </div>
       )}
     </div>
@@ -519,12 +470,21 @@ function HomepageTab() {
   const [saved, setSaved] = useState(false);
   const [section, setSection] = useState<'identity' | 'hero' | 'sections' | 'contact' | 'seo'>('identity');
 
+  /* Save immediately on every field change */
   function update(field: keyof SiteSettings, value: unknown) {
-    setSite(s => ({ ...s, [field]: value }));
+    setSite(s => {
+      const updated = { ...s, [field]: value };
+      saveSite(updated); // ← immediate save + notify App.tsx
+      return updated;
+    });
     setSaved(false);
   }
 
-  function save() { saveSite(site); setSaved(true); setTimeout(() => setSaved(false), 2500); }
+  function save() {
+    saveSite(site);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  }
 
   const sections: { id: typeof section; icon: string; label: string }[] = [
     { id: 'identity', icon: '🏷️', label: 'الهوية' },
@@ -536,6 +496,14 @@ function HomepageTab() {
 
   return (
     <div>
+      {/* Info banner */}
+      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 16 }}>ℹ️</span>
+        <span style={{ fontSize: 11, color: '#1e40af', fontWeight: 700 }}>
+          التغييرات تُحفظ وتُطبَّق فوراً على الصفحة الرئيسية بعد الضغط على "حفظ"
+        </span>
+      </div>
+
       {/* Sub-tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
         {sections.map(s => (
@@ -579,7 +547,7 @@ function HomepageTab() {
               </div>
             </div>
           </div>
-          {/* Preview */}
+          {/* Live preview */}
           <div style={{ marginTop: 16, padding: 16, background: site.primaryColor, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 32 }}>{site.logo}</span>
             <div>
@@ -587,6 +555,7 @@ function HomepageTab() {
               <div style={{ color: site.accentColor, fontSize: 12 }}>{site.siteNameFr}</div>
               <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 2 }}>{site.slogan}</div>
             </div>
+            <div style={{ marginRight: 'auto', fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>معاينة حية</div>
           </div>
         </SectionCard>
       )}
@@ -598,8 +567,6 @@ function HomepageTab() {
           <Input label="العنوان الفرعي (عربي)" value={site.heroSubtitle} onChange={v => update('heroSubtitle', v)} />
           <Input label="العنوان بالفرنسية" value={site.heroTitleFr} onChange={v => update('heroTitleFr', v)} />
           <Input label="نص الـ Footer" value={site.footerText} onChange={v => update('footerText', v)} />
-
-          {/* Maintenance Mode */}
           <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: 14, marginTop: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontWeight: 800, color: '#c2410c', fontSize: 13 }}>🔧 وضع الصيانة</span>
@@ -616,10 +583,10 @@ function HomepageTab() {
       {section === 'sections' && (
         <SectionCard title="الأقسام المرئية" icon="📋">
           {[
-            { key: 'showStats', label: 'قسم الإحصائيات', icon: '📊' },
-            { key: 'showHowItWorks', label: 'كيف يعمل الموقع', icon: '🔄' },
-            { key: 'showTestimonials', label: 'شهادات العملاء', icon: '💬' },
-            { key: 'showFaq', label: 'الأسئلة الشائعة', icon: '❓' },
+            { key: 'showStats',        label: 'قسم الإحصائيات',       icon: '📊' },
+            { key: 'showHowItWorks',   label: 'كيف يعمل الموقع',      icon: '🔄' },
+            { key: 'showTestimonials', label: 'شهادات العملاء',        icon: '💬' },
+            { key: 'showFaq',          label: 'الأسئلة الشائعة',       icon: '❓' },
           ].map(s => (
             <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -661,7 +628,7 @@ function HomepageTab() {
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
         <Btn onClick={save} color={saved ? C.success : C.primary}>
-          {saved ? '✅ تم حفظ إعدادات الموقع' : '💾 حفظ التغييرات'}
+          {saved ? '✅ تم الحفظ — الصفحة الرئيسية محدَّثة' : '💾 حفظ التغييرات'}
         </Btn>
       </div>
     </div>
@@ -677,9 +644,9 @@ export default function GeneralSettings() {
   const [tab, setTab] = useState<Tab>('services');
 
   const tabs: { id: Tab; icon: string; labelAr: string; labelFr: string; color: string }[] = [
-    { id: 'services', icon: '⚙️', labelAr: 'إدارة الخدمات',    labelFr: 'Gestion des Services',  color: '#2563a8' },
-    { id: 'ads',      icon: '📢', labelAr: 'الإعلانات',         labelFr: 'Publicités',            color: C.accent  },
-    { id: 'homepage', icon: '🏠', labelAr: 'الصفحة الرئيسية',  labelFr: 'Page d\'Accueil',       color: '#7c3aed' },
+    { id: 'services', icon: '⚙️', labelAr: 'إدارة الخدمات',   labelFr: 'Gestion des Services', color: '#2563a8' },
+    { id: 'ads',      icon: '📢', labelAr: 'الإعلانات',        labelFr: 'Publicités',           color: C.accent  },
+    { id: 'homepage', icon: '🏠', labelAr: 'الصفحة الرئيسية', labelFr: "Page d'Accueil",       color: '#7c3aed' },
   ];
 
   return (

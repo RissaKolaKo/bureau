@@ -5,6 +5,7 @@
    Authenticated: All other modules
 ═══════════════════════════════════════════════════════════════════ */
 import { useState, useEffect } from 'react';
+import { ServiceConfig, AdItem, SiteSettings } from '../utils/siteSettings';
 
 type ServiceKey = 'procedures' | 'scanner' | 'writer' | 'cv' | 'letters' | 'invoices';
 
@@ -15,6 +16,10 @@ interface HomePageProps {
   onScanStudio: () => void;
   scanUsesLeft: number;
   onServicePage?: (key: ServiceKey) => void;
+  /* Props from App.tsx (single source of truth) */
+  serviceConfigs: ServiceConfig[];
+  ads: AdItem[];
+  site: SiteSettings;
 }
 
 /* ── Moroccan Star SVG ── */
@@ -229,64 +234,105 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 /* ════════════════════════════════════════
    MAIN HOMEPAGE
 ════════════════════════════════════════ */
-export default function HomePage({ onLogin, onRegister, onProcedures, onScanStudio, scanUsesLeft, onServicePage }: HomePageProps) {
+/* ── AdSlot: render a single ad by position ── */
+function AdSlot({ position, ads }: { position: string; ads: AdItem[] }) {
+  const ad = ads.find(a => a.position === position && a.enabled);
+  if (!ad) return null;
+  const wrap = (child: React.ReactNode) => (
+    ad.link ? <a href={ad.link} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>{child}</a> : <>{child}</>
+  );
+  if (ad.type === 'image' && ad.content) {
+    return (
+      <div style={{ textAlign: 'center', margin: '12px 0' }}>
+        {wrap(<img src={ad.content} alt={ad.alt || ''} style={{ maxWidth: '100%', borderRadius: 10, display: 'inline-block' }} />)}
+      </div>
+    );
+  }
+  if (ad.type === 'html' && ad.content) {
+    return <div style={{ margin: '12px 0' }} dangerouslySetInnerHTML={{ __html: ad.content }} />;
+  }
+  return null;
+}
+
+export default function HomePage({ onLogin, onRegister, onProcedures, onScanStudio, scanUsesLeft, onServicePage, serviceConfigs, ads, site: _site }: HomePageProps) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  /* scrolled effect */
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 40);
     window.addEventListener('scroll', fn);
     return () => window.removeEventListener('scroll', fn);
   }, []);
 
-  const services: {
+  /* ── Build services list from config ── */
+  const SERVICE_DEFS: Record<string, {
+    icon: string; title: string; titleFr: string; desc: string;
+    onClick: () => void; onDetails?: () => void;
+  }> = {
+    procedures: {
+      icon: '🏛️', title: 'المساطر الإدارية', titleFr: 'Procédures Administratives',
+      desc: 'دليل شامل لجميع المساطر الإدارية المغربية: CIN، رخصة السياقة، جواز السفر، العقار، التجارة وأكثر من 55 مسطرة.',
+      onClick: onProcedures,
+      onDetails: onServicePage ? () => onServicePage('procedures') : undefined,
+    },
+    scanner: {
+      icon: '🪪', title: 'Scan Studio', titleFr: 'Numérisation de Documents',
+      desc: 'مسح البطاقة الوطنية وأي وثيقة مع تصحيح تلقائي للمنظور وتصدير PDF بدقة 300 DPI جاهز للطباعة.',
+      onClick: onScanStudio,
+      onDetails: onServicePage ? () => onServicePage('scanner') : undefined,
+    },
+    writer: {
+      icon: '✍️', title: 'الكاتب العمومي', titleFr: 'Rédacteur Public',
+      desc: 'إنشاء وثائق رسمية: تصريح بالشرف، وكالة، عقود، التزامات، إقرار بدين — بصيغة مغربية رسمية.',
+      onClick: onRegister,
+      onDetails: onServicePage ? () => onServicePage('writer') : undefined,
+    },
+    cv: {
+      icon: '📄', title: 'مولّد السيرة الذاتية', titleFr: 'Générateur de CV',
+      desc: 'إنشاء سيرة ذاتية احترافية بالفرنسية مع 3 قوالب، ألوان مخصصة وتصدير PDF وWord بجودة عالية.',
+      onClick: onRegister,
+      onDetails: onServicePage ? () => onServicePage('cv') : undefined,
+    },
+    letters: {
+      icon: '📝', title: 'الرسائل الفرنسية', titleFr: 'Lettres Officielles',
+      desc: 'نماذج جاهزة: طلب تدريب، استقالة، مراسلة رسمية — بأسلوب إداري فرنسي رسمي.',
+      onClick: onRegister,
+      onDetails: onServicePage ? () => onServicePage('letters') : undefined,
+    },
+    invoices: {
+      icon: '🧾', title: 'الفواتير والحسابات', titleFr: 'Factures & Devis',
+      desc: 'إنشاء فواتير وعروض أسعار بالفرنسية مع حساب TVA 20% تلقائي وكتابة المبلغ بالحروف.',
+      onClick: onRegister,
+      onDetails: onServicePage ? () => onServicePage('invoices') : undefined,
+    },
+  };
+
+  type ServiceItem = {
     icon: string; title: string; titleFr: string; desc: string;
     badge?: string; badgeColor?: string; onClick: () => void;
     onDetails?: () => void; locked?: boolean; freeUses?: number;
-  }[] = [
-    {
-      icon: '🏛️', title: 'المساطر الإدارية', titleFr: 'Procédures Administratives',
-      desc: 'دليل شامل لجميع المساطر الإدارية المغربية: CIN، رخصة السياقة، جواز السفر، العقار، التجارة وأكثر من 55 مسطرة.',
-      badge: '✓ مجاني', badgeColor: '#dcfce7',
-      onClick: onProcedures, locked: false,
-      onDetails: onServicePage ? () => onServicePage('procedures') : undefined,
-    },
-    {
-      icon: '🪪', title: 'Scan Studio', titleFr: 'Numérisation de Documents',
-      desc: 'مسح البطاقة الوطنية وأي وثيقة مع تصحيح تلقائي للمنظور وتصدير PDF بدقة 300 DPI جاهز للطباعة.',
-      freeUses: scanUsesLeft,
-      onClick: onScanStudio, locked: false,
-      onDetails: onServicePage ? () => onServicePage('scanner') : undefined,
-    },
-    {
-      icon: '✍️', title: 'الكاتب العمومي', titleFr: 'Rédacteur Public',
-      desc: 'إنشاء وثائق رسمية: تصريح بالشرف، وكالة، عقود، التزامات، إقرار بدين — بصيغة مغربية رسمية.',
-      badge: '🔒 حساب مطلوب', badgeColor: '#fef3c7',
-      onClick: onRegister, locked: true,
-      onDetails: onServicePage ? () => onServicePage('writer') : undefined,
-    },
-    {
-      icon: '📄', title: 'مولّد السيرة الذاتية', titleFr: 'Générateur de CV',
-      desc: 'إنشاء سيرة ذاتية احترافية بالفرنسية مع 3 قوالب، ألوان مخصصة وتصدير PDF وWord بجودة عالية.',
-      badge: '🔒 حساب مطلوب', badgeColor: '#fef3c7',
-      onClick: onRegister, locked: true,
-      onDetails: onServicePage ? () => onServicePage('cv') : undefined,
-    },
-    {
-      icon: '📝', title: 'الرسائل الفرنسية', titleFr: 'Lettres Officielles',
-      desc: 'نماذج جاهزة: طلب تدريب، استقالة، مراسلة رسمية — بأسلوب إداري فرنسي رسمي.',
-      badge: '🔒 حساب مطلوب', badgeColor: '#fef3c7',
-      onClick: onRegister, locked: true,
-      onDetails: onServicePage ? () => onServicePage('letters') : undefined,
-    },
-    {
-      icon: '🧾', title: 'الفواتير والحسابات', titleFr: 'Factures & Devis',
-      desc: 'إنشاء فواتير وعروض أسعار بالفرنسية مع حساب TVA 20% تلقائي وكتابة المبلغ بالحروف.',
-      badge: '🔒 حساب مطلوب', badgeColor: '#fef3c7',
-      onClick: onRegister, locked: true,
-      onDetails: onServicePage ? () => onServicePage('invoices') : undefined,
-    },
-  ];
+  };
+
+  /* Build dynamic services list — only show enabled + visible */
+  const services: ServiceItem[] = serviceConfigs
+    .filter(cfg => cfg.enabled && cfg.visible)
+    .map(cfg => {
+      const def = SERVICE_DEFS[cfg.key];
+      if (!def) return null;
+      const isFree = cfg.freeAccess;
+      const hasFreeUses = isFree && cfg.freeUses > 0;
+      return {
+        ...def,
+        badge: isFree ? (hasFreeUses ? undefined : '✓ مجاني') : '🔒 حساب مطلوب',
+        badgeColor: isFree ? '#dcfce7' : '#fef3c7',
+        locked: !isFree,
+        freeUses: (cfg.key === 'scanner' && hasFreeUses) ? scanUsesLeft : undefined,
+        onClick: isFree ? (cfg.key === 'scanner' ? onScanStudio : cfg.key === 'procedures' ? onProcedures : def.onClick) : onRegister,
+      } as ServiceItem;
+    }).filter((x): x is ServiceItem => x !== null);
+
+
 
   const steps = [
     { n: 1, icon: '📋', title: 'اختر الخدمة', desc: 'حدد نوع الوثيقة أو الخدمة التي تحتاجها من بين خياراتنا الشاملة' },
@@ -547,6 +593,9 @@ export default function HomePage({ onLogin, onRegister, onProcedures, onScanStud
         </div>
       </section>
 
+      {/* Ad slot: hero-bottom */}
+      <AdSlot position="hero-bottom" ads={ads} />
+
       {/* ════ FREE ACCESS BANNER ════ */}
       <section style={{ background: 'linear-gradient(135deg,#c8962c,#e8b84b)', padding: '20px 24px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -568,6 +617,9 @@ export default function HomePage({ onLogin, onRegister, onProcedures, onScanStud
           </div>
         </div>
       </section>
+
+      {/* Ad slot: services-top */}
+      <AdSlot position="services-top" ads={ads} />
 
       {/* ════ SERVICES ════ */}
       <section id="services" style={{ padding: 'clamp(48px,8vw,80px) 24px', background: '#f8fafc' }}>
@@ -591,7 +643,7 @@ export default function HomePage({ onLogin, onRegister, onProcedures, onScanStud
             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
             gap: 20,
           }}>
-            {services.map(s => (
+            {services.map((s: ServiceItem) => (
               <ServiceCard key={s.title} {...s} />
             ))}
           </div>

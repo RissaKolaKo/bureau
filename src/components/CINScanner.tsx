@@ -956,6 +956,7 @@ interface CINScannerProps {
   onRequestLogin?: () => void;
   onRequestRegister?: () => void;
   scanUsesLeft?: number;
+  freeMax?: number;
   isPublic?: boolean;
 }
 
@@ -965,6 +966,7 @@ export default function CINScanner({
   onRequestLogin,
   onRequestRegister,
   scanUsesLeft,
+  freeMax = 4,
   isPublic = false,
 }: CINScannerProps) {
   const [front, setFront] = useState<SideState>(emptySide());
@@ -1211,14 +1213,14 @@ export default function CINScanner({
               borderRadius: 12, padding: '8px 16px', marginBottom: 20,
               fontSize: 11, color: '#f87171', fontFamily: 'Inter, sans-serif', fontWeight: 700,
             }}>
-              انتهت الاستخدامات المجانية — 5 / 5
+              انتهت الاستخدامات المجانية — {freeMax} / {freeMax}
             </div>
 
             <h2 style={{ color: 'white', fontSize: 22, fontWeight: 900, margin: '0 0 10px' }}>
               سجّل للحصول على استخدام غير محدود
             </h2>
             <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, lineHeight: 1.8, margin: '0 0 28px' }}>
-              لقد استخدمت جميع الاستخدامات المجانية الـ 5 لـ Scan Studio.<br />
+              لقد استخدمت جميع الاستخدامات المجانية الـ {freeMax} لـ Scan Studio.<br />
               أنشئ حساباً مجانياً للاستمرار بدون حدود.
             </p>
 
@@ -1286,7 +1288,7 @@ export default function CINScanner({
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} style={{
                   width: 22, height: 8, borderRadius: 4,
-                  background: i < (5 - scanUsesLeft)
+                  background: i < (freeMax - (scanUsesLeft ?? 0))
                     ? 'rgba(255,255,255,0.12)'
                     : '#22d3ee',
                   transition: 'background 0.3s',
@@ -1295,7 +1297,7 @@ export default function CINScanner({
             </div>
             <span style={{ fontSize: 12, color: scanUsesLeft > 0 ? '#22d3ee' : '#f87171', fontWeight: 700, fontFamily: 'Inter, sans-serif' }}>
               {scanUsesLeft > 0
-                ? `${scanUsesLeft} استخدام متبقٍ من أصل 5`
+                ? `${scanUsesLeft} استخدام متبقٍ من أصل ${freeMax}`
                 : 'انتهت الاستخدامات المجانية'}
             </span>
           </div>
