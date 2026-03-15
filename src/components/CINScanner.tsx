@@ -992,6 +992,16 @@ export default function CINScanner({
     dpi: 300,
   });
 
+  // ── Mobile state ──
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
+  const [mobileStep, setMobileStep] = useState<1 | 2 | 3 | 4>(1);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
   useEffect(() => {
     setCvLoading(true);
     loadOpenCV().then(() => { setCvReady(!!(window.cv?.Mat)); setCvLoading(false); });
@@ -1022,8 +1032,13 @@ export default function CINScanner({
     const { quad, success, method } = await detectDocumentCorners(dataUrl);
     const warped = await applyWarpToImage(dataUrl, quad, { brightness, contrast, filter });
     setState({ original: dataUrl, natW: w, natH: h, quad, warped, detecting: false, success, method });
-    if (side === 'front') setActiveTab('front');
-  }, [brightness, contrast, filter]);
+    if (side === 'front') {
+      setActiveTab('front');
+      // ← NO auto-advance on mobile: user must review crop first
+    } else {
+      // ← NO auto-advance on mobile: user must review crop first
+    }
+  }, [brightness, contrast, filter, isMobile]);
 
   const reDetect = useCallback(async (side: 'front' | 'back') => {
     const state = side === 'front' ? front : back;
@@ -1180,7 +1195,298 @@ export default function CINScanner({
     );
   }
 
-  /* ─────────────── RENDER ─────────────── */
+  /* ─────────────── MOBILE RENDER ─────────────── */
+  const ExportBtn = ({ style }: { style?: React.CSSProperties }) => (
+    <button onClick={handleExport} disabled={exporting || !hasAny}
+      style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', cursor: hasAny ? 'pointer' : 'not-allowed',
+        background: hasAny ? 'linear-gradient(135deg,#0891b2,#22d3ee)' : '#1e293b',
+        color: hasAny ? 'white' : '#475569', fontFamily: 'Cairo,sans-serif', fontSize: 15, fontWeight: 800,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, ...style }}>
+      {exporting ? '⏳ جاري التصدير...' : '📄 تصدير PDF'}
+    </button>
+  );
+
+  const MobileStepBar = () => {
+    const steps = [
+      { n: 1, label: 'الوجه الأمامي', icon: '🪪' },
+      { n: 2, label: 'الوجه الخلفي',  icon: '🔄' },
+      { n: 3, label: 'تحسين الصورة',  icon: '🎨' },
+      { n: 4, label: 'تصدير',         icon: '📄' },
+    ];
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, marginBottom: 20, direction: 'ltr' }}>
+        {steps.map((s, i) => (
+          <div key={s.n} style={{ display: 'flex', alignItems: 'center' }}>
+            <button onClick={() => setMobileStep(s.n as 1|2|3|4)}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}>
+              <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: mobileStep === s.n ? 'linear-gradient(135deg,#0891b2,#22d3ee)' :
+                            mobileStep > s.n  ? '#052e16' : '#0f1e35',
+                border: mobileStep === s.n ? '2px solid #22d3ee' : mobileStep > s.n ? '2px solid #4ade80' : '2px solid #1e3a5f',
+                color: mobileStep === s.n ? '#fff' : mobileStep > s.n ? '#4ade80' : '#475569',
+                fontWeight: 800, fontSize: mobileStep > s.n ? 16 : 12 }}>
+                {mobileStep > s.n ? '✓' : s.icon}
+              </div>
+              <span style={{ fontSize: 8, color: mobileStep === s.n ? '#22d3ee' : '#475569', fontFamily: 'Cairo,sans-serif', whiteSpace: 'nowrap' }}>{s.label}</span>
+            </button>
+            {i < steps.length - 1 && (
+              <div style={{ width: 24, height: 2, background: mobileStep > s.n ? '#4ade80' : '#1e3a5f', marginBottom: 14, flexShrink: 0 }} />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  if (isMobile) {
+    return (
+      <div style={{ background: '#070d1a', minHeight: '100vh', padding: '16px', direction: 'rtl', fontFamily: 'Cairo,sans-serif', color: 'white' }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: '#22d3ee', fontWeight: 700, letterSpacing: 2 }}>SCAN STUDIO</div>
+          <div style={{ fontSize: 11, color: '#475569' }}>مسح وثائق الهوية</div>
+        </div>
+
+        {/* Step bar */}
+        <MobileStepBar />
+
+        {/* Export button TOP (shown on step 4) */}
+        {mobileStep === 4 && (
+          <div style={{ marginBottom: 16 }}>
+            <ExportBtn />
+          </div>
+        )}
+
+        {/* ── Step 1: Recto ── */}
+        {mobileStep === 1 && (
+          <div style={{ background: '#0d1b2e', borderRadius: 16, padding: 16, border: '1px solid #1e3a5f' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#22d3ee', marginBottom: 12 }}>🪪 الوجه الأمامي — Recto</div>
+
+            {!front.original && <DropZone sideKey="front" processing={false} />}
+
+            {front.original && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                {front.detecting && (
+                  <div style={{ textAlign: 'center', color: '#22d3ee', padding: 20, fontSize: 13 }}>⏳ جاري الكشف عن الحواف...</div>
+                )}
+
+                {!front.detecting && front.warped && (
+                  <>
+                    {/* result image */}
+                    <div>
+                      <div style={{ fontSize: 9, color: '#64748b', marginBottom: 4, textAlign: 'center' }}>نتيجة القص</div>
+                      <img src={front.warped} alt="recto" style={{ width: '100%', borderRadius: 10, border: '2px solid #22d3ee50' }} />
+                    </div>
+
+                    {/* hint */}
+                    <div style={{ background: '#0f2744', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+                      {front.success ? '✅ تم الكشف التلقائي — يمكنك تطبيق القص أو إعادة الكشف' : '⚠️ لم يتم الكشف التلقائي — تحقق من الصورة'}
+                    </div>
+
+                    {/* action buttons */}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => reDetect('front')}
+                        style={{ flex: 1, padding: '10px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🔍 إعادة الكشف
+                      </button>
+                      {front.quad && (
+                        <button onClick={() => applyWarp('front', front.quad!)}
+                          style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg,#0891b2,#22d3ee)', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
+                          ✂️ تطبيق القص
+                        </button>
+                      )}
+                    </div>
+
+                    {/* next button — only enabled after warped */}
+                    <button onClick={() => setMobileStep(2)}
+                      style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#065f46,#059669)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', letterSpacing: 1 }}>
+                      ✅ تم — التالي: الوجه الخلفي ←
+                    </button>
+                  </>
+                )}
+
+                {!front.detecting && !front.warped && (
+                  <div style={{ textAlign: 'center', padding: 20, color: '#f87171', fontSize: 13 }}>
+                    ⚠️ فشل القص — اضغط إعادة الكشف
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 2: Verso ── */}
+        {mobileStep === 2 && (
+          <div style={{ background: '#0d1b2e', borderRadius: 16, padding: 16, border: '1px solid #1e3a5f' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#22d3ee', marginBottom: 12 }}>🔄 الوجه الخلفي — Verso</div>
+
+            {!back.original && <DropZone sideKey="back" processing={false} />}
+
+            {back.original && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                {back.detecting && (
+                  <div style={{ textAlign: 'center', color: '#22d3ee', padding: 20, fontSize: 13 }}>⏳ جاري الكشف عن الحواف...</div>
+                )}
+
+                {!back.detecting && back.warped && (
+                  <>
+                    <div>
+                      <div style={{ fontSize: 9, color: '#64748b', marginBottom: 4, textAlign: 'center' }}>نتيجة القص</div>
+                      <img src={back.warped} alt="verso" style={{ width: '100%', borderRadius: 10, border: '2px solid #22d3ee50' }} />
+                    </div>
+
+                    <div style={{ background: '#0f2744', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+                      {back.success ? '✅ تم الكشف التلقائي — يمكنك تطبيق القص أو إعادة الكشف' : '⚠️ لم يتم الكشف التلقائي — تحقق من الصورة'}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => reDetect('back')}
+                        style={{ flex: 1, padding: '10px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🔍 إعادة الكشف
+                      </button>
+                      {back.quad && (
+                        <button onClick={() => applyWarp('back', back.quad!)}
+                          style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg,#0891b2,#22d3ee)', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
+                          ✂️ تطبيق القص
+                        </button>
+                      )}
+                    </div>
+
+                    <button onClick={() => setMobileStep(3)}
+                      style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#065f46,#059669)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', letterSpacing: 1 }}>
+                      ✅ تم — التالي: تحسين الصورة ←
+                    </button>
+                  </>
+                )}
+
+                {!back.detecting && !back.warped && (
+                  <div style={{ textAlign: 'center', padding: 20, color: '#f87171', fontSize: 13 }}>
+                    ⚠️ فشل القص — اضغط إعادة الكشف
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button onClick={() => setMobileStep(1)}
+              style={{ width: '100%', marginTop: 12, padding: '10px', background: 'transparent', color: '#475569', border: '1px solid #1e3a5f', borderRadius: 8, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+              ← رجوع للوجه الأمامي
+            </button>
+          </div>
+        )}
+
+        {/* ── Step 3: Enhance ── */}
+        {mobileStep === 3 && (
+          <div style={{ background: '#0d1b2e', borderRadius: 16, padding: 16, border: '1px solid #1e3a5f' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#22d3ee', marginBottom: 12 }}>🎨 تحسين الصورة</div>
+
+            {/* Preview both */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              {front.warped && <div><div style={{ fontSize: 9, color: '#475569', marginBottom: 4, textAlign: 'center' }}>RECTO</div><img src={front.warped} alt="r" style={{ width: '100%', borderRadius: 8, border: '1px solid #1e3a5f' }} /></div>}
+              {back.warped  && <div><div style={{ fontSize: 9, color: '#475569', marginBottom: 4, textAlign: 'center' }}>VERSO</div><img src={back.warped}  alt="v" style={{ width: '100%', borderRadius: 8, border: '1px solid #1e3a5f' }} /></div>}
+            </div>
+
+            {/* Filters */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, marginBottom: 8 }}>الفلاتر</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6 }}>
+                {([['color','🎨 أصلي'],['grayscale','⬜ رمادي'],['bw','◼ أبيض/أسود'],['auto-enhance','✨ تحسين'],['high-contrast','🔆 تباين'],['id-mode','🪪 ID']] as [FilterMode,string][]).map(([f,l]) => (
+                  <button key={f} onClick={() => setFilter(f)}
+                    style={{ padding: '8px 4px', borderRadius: 8, border: `1px solid ${filter===f?'#22d3ee':'#1e3a5f'}`,
+                      background: filter===f?'#22d3ee20':'#0d1b2e', color: filter===f?'#22d3ee':'#64748b',
+                      fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>{l}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sliders */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>☀️ سطوع {brightness}%</div>
+                <input type="range" min={50} max={200} value={brightness} onChange={e => setBrightness(+e.target.value)} style={{ width: '100%', accentColor: '#22d3ee' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>🔆 تباين {contrast}%</div>
+                <input type="range" min={50} max={250} value={contrast} onChange={e => setContrast(+e.target.value)} style={{ width: '100%', accentColor: '#22d3ee' }} />
+              </div>
+            </div>
+
+            <button onClick={reApplyFilters} style={{ width: '100%', padding: '10px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
+              ✨ تطبيق التحسينات
+            </button>
+
+            <button onClick={() => setMobileStep(4)} style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg,#0f2744,#1a3a5c)', color: '#22d3ee', border: '2px solid #22d3ee50', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+              التالي: تصدير PDF ←
+            </button>
+            <button onClick={() => setMobileStep(2)} style={{ width: '100%', marginTop: 8, padding: '10px', background: 'transparent', color: '#475569', border: '1px solid #1e3a5f', borderRadius: 8, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>← رجوع</button>
+          </div>
+        )}
+
+        {/* ── Step 4: Export ── */}
+        {mobileStep === 4 && (
+          <div style={{ background: '#0d1b2e', borderRadius: 16, padding: 16, border: '1px solid #1e3a5f' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#22d3ee', marginBottom: 14 }}>📄 تصدير PDF</div>
+
+            {/* Layout preset */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, marginBottom: 8 }}>تخطيط الطباعة</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {([['a5-front-back','🪪 A5 رجوعي'],['a4-2copies','📄 A4 نسختان'],['a4-4copies','4️⃣ A4 أربع'],['a5-front-only','🖼️ A5 وجه واحد'],['passport','🛂 جواز']] as [LayoutPreset,string][]).map(([l,lbl]) => (
+                  <button key={l} onClick={() => setLayout(l)}
+                    style={{ padding: '9px 6px', borderRadius: 8, border: `1px solid ${layout===l?'#22d3ee':'#1e3a5f'}`,
+                      background: layout===l?'#22d3ee15':'#0d1b2e', color: layout===l?'#22d3ee':'#64748b',
+                      fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>{lbl}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Preview */}
+            {(front.warped || back.warped) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14, background: '#070d1a', borderRadius: 10, padding: 10 }}>
+                {front.warped && <div style={{ textAlign: 'center' }}><div style={{ fontSize: 8, color: '#475569', marginBottom: 4 }}>RECTO</div><img src={front.warped} alt="r" style={{ width: '100%', borderRadius: 6, border: '1px solid #1e3a5f' }} /></div>}
+                {back.warped  && <div style={{ textAlign: 'center' }}><div style={{ fontSize: 8, color: '#475569', marginBottom: 4 }}>VERSO</div><img src={back.warped}  alt="v" style={{ width: '100%', borderRadius: 6, border: '1px solid #1e3a5f' }} /></div>}
+              </div>
+            )}
+
+            <ExportBtn />
+
+            <button onClick={() => { setFront(emptySide()); setBack(emptySide()); setMobileStep(1); }}
+              style={{ width: '100%', marginTop: 10, padding: '10px', background: 'transparent', color: '#475569', border: '1px solid #1e3a5f', borderRadius: 8, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+              ↺ مسح جديد
+            </button>
+            <button onClick={() => setMobileStep(3)} style={{ width: '100%', marginTop: 6, padding: '8px', background: 'transparent', color: '#475569', border: '1px solid #1e3a5f', borderRadius: 8, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>← رجوع</button>
+          </div>
+        )}
+
+        {/* Bottom export button (step 4 only) */}
+        {mobileStep === 4 && (
+          <div style={{ marginTop: 16 }}>
+            <ExportBtn />
+          </div>
+        )}
+
+        {/* Limit popup */}
+        {showLimitPopup && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            onClick={() => setShowLimitPopup(false)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(135deg,#0f1e35,#1a2d4a)', border: '2px solid rgba(200,150,44,0.4)', borderRadius: 20, padding: '36px 24px', maxWidth: 360, width: '100%', textAlign: 'center', direction: 'rtl', fontFamily: 'Cairo,sans-serif' }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+              <h2 style={{ color: 'white', fontSize: 18, fontWeight: 900, margin: '0 0 10px' }}>انتهت الاستخدامات المجانية</h2>
+              <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 20px' }}>لقد استخدمت {freeMax}/{freeMax} استخدامات مجانية</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {onRequestRegister && <button onClick={onRequestRegister} style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg,#c8962c,#e5b84a)', border: 'none', borderRadius: 10, color: 'white', fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📝 إنشاء حساب مجاني</button>}
+                {onRequestLogin    && <button onClick={onRequestLogin}    style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, color: 'white', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>🔓 تسجيل الدخول</button>}
+                <button onClick={() => setShowLimitPopup(false)} style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid #1e3a5f', borderRadius: 10, color: '#64748b', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>إغلاق</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ─────────────── DESKTOP RENDER ─────────────── */
   return (
     <div className="animate-fadeIn scan-page" style={{ padding: '24px 28px', background: '#070d1a', minHeight: '100%' }}>
 

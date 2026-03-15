@@ -2,13 +2,27 @@ import { useState, useEffect, useCallback } from 'react';
 import { authService as userDB, RegistrationRequest, RegistrationStatus, UserRole, ActiveSession } from '../utils/authService';
 import { sendApprovalEmail, sendRejectionEmail } from '../utils/emailService';
 
-/* ── Role options ── */
-const ROLE_OPTIONS: { value: UserRole; label: string; icon: string; color: string; bg: string }[] = [
-  { value:'editor',     label:'كاتب — Éditeur',          icon:'✍️', color:'#065f46', bg:'#d1fae5' },
-  { value:'viewer',     label:'مشاهد — Lecteur',          icon:'👁️', color:'#374151', bg:'#f3f4f6' },
-  { value:'admin',      label:'مدير — Administrateur',    icon:'🏛️', color:'#1e40af', bg:'#dbeafe' },
-  { value:'superadmin', label:'مدير عام — Super Admin',   icon:'👑', color:'#92400e', bg:'#fef3c7' },
+/* ── Role options ── superadmin NEVER appears ── */
+const ALL_ROLE_OPTIONS: { value: UserRole; label: string; icon: string; color: string; bg: string }[] = [
+  { value:'viewer', label:'مشاهد — Lecteur',       icon:'👁️', color:'#374151', bg:'#f3f4f6' },
+  { value:'editor', label:'كاتب — Éditeur',        icon:'✍️', color:'#065f46', bg:'#d1fae5' },
+  { value:'admin',  label:'مدير — Administrateur', icon:'🏛️', color:'#1e40af', bg:'#dbeafe' },
+  /* superadmin is intentionally excluded from this list — cannot be assigned to anyone */
 ];
+
+/** Returns allowed role options based on who is approving */
+function getRoleOptions(approverRole: string) {
+  if (approverRole === 'superadmin') {
+    // superadmin can assign: viewer, editor, admin (but NOT superadmin)
+    return ALL_ROLE_OPTIONS;
+  }
+  if (approverRole === 'admin') {
+    // admin can assign: viewer, editor, admin (but NOT superadmin)
+    return ALL_ROLE_OPTIONS;
+  }
+  // fallback — only viewer/editor
+  return ALL_ROLE_OPTIONS.filter(r => r.value === 'viewer' || r.value === 'editor');
+}
 
 const STATUS_CONF: Record<RegistrationStatus, { label: string; ar: string; color: string; bg: string; dot: string; icon: string }> = {
   pending:  { label:'Pending',  ar:'قيد المراجعة', color:'#b45309', bg:'#fef3c7', dot:'#f59e0b', icon:'⏳' },
@@ -88,7 +102,7 @@ function ApproveModal({ req, session, onDone, onClose }: {
             تعيين الدور / Rôle à assigner:
           </label>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-            {ROLE_OPTIONS.map(r => (
+            {getRoleOptions(session.role).map((r: typeof ALL_ROLE_OPTIONS[number]) => (
               <button key={r.value} onClick={() => setRole(r.value)}
                 style={{
                   padding:'10px 12px', borderRadius:10, border:`2px solid ${role === r.value ? r.color : '#e2e8f0'}`,

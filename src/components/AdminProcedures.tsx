@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface Step { step: string; fr: string; }
 interface Procedure {
@@ -1152,6 +1152,13 @@ export default function AdminProcedures() {
   const [search, setSearch] = useState('');
   const [lang, setLang] = useState<'ar' | 'fr'>('ar');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   const filtered = PROCEDURES.filter(p => {
     const catMatch = selectedCategory === 'all' || p.category === selectedCategory;
@@ -1165,6 +1172,16 @@ export default function AdminProcedures() {
 
   const handleCategoryChange = (cat: string) => { setSelectedCategory(cat); setCurrentPage(1); setSelectedProc(null); };
   const handleSearch = (q: string) => { setSearch(q); setCurrentPage(1); setSelectedProc(null); };
+
+  const handleProcClick = (proc: Procedure) => {
+    const next = selectedProc?.id === proc.id ? null : proc;
+    setSelectedProc(next);
+    if (next && isMobile) {
+      setTimeout(() => {
+        document.getElementById(`proc-detail-${proc.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+    }
+  };
 
   return (
     <div className="animate-fadeIn" style={{ padding: '24px 36px', background: '#f8fafc', minHeight: '100%' }}>
@@ -1235,7 +1252,7 @@ export default function AdminProcedures() {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: selectedProc ? '1fr 440px' : '1fr', gap: 20, alignItems: 'start' }}>
+      <div style={{ display: isMobile ? 'block' : (selectedProc ? 'grid' : 'block'), gridTemplateColumns: selectedProc ? '1fr 440px' : '1fr', gap: 20, alignItems: 'start' }}>
 
         {/* Grid */}
         <div>
@@ -1246,38 +1263,146 @@ export default function AdminProcedures() {
             </div>
           ) : (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: isMobile ? 0 : 12 }}>
                 {paginated.map(proc => (
-                  <button key={proc.id} onClick={() => setSelectedProc(proc.id === selectedProc?.id ? null : proc)}
-                    style={{
-                      background: 'white', borderRadius: 12, padding: '16px', textAlign: 'right',
-                      border: selectedProc?.id === proc.id ? `2px solid ${proc.color}` : '1.5px solid #e2e8f0',
-                      cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.18s',
-                      boxShadow: selectedProc?.id === proc.id ? `0 4px 20px ${proc.color}25` : '0 1px 4px rgba(0,0,0,0.05)',
-                      outline: 'none',
-                    }}
-                    onMouseEnter={e => { if (selectedProc?.id !== proc.id) { e.currentTarget.style.borderColor = proc.color; e.currentTarget.style.transform = 'translateY(-2px)'; } }}
-                    onMouseLeave={e => { if (selectedProc?.id !== proc.id) { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.transform = 'none'; } }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 10 }}>
-                      <div style={{ width: 42, height: 42, background: `${proc.color}12`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0, border: `1.5px solid ${proc.color}25` }}>
-                        {proc.icon}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 800, color: '#0f2744', lineHeight: 1.4, marginBottom: 2 }}>
-                          {lang === 'ar' ? proc.titleAr : proc.titleFr}
+                  <div key={proc.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                    {/* Card Button */}
+                    <button onClick={() => handleProcClick(proc)}
+                      style={{
+                        borderRadius: isMobile ? 0 : 12,
+                        padding: isMobile ? '14px 16px' : '16px',
+                        textAlign: 'right',
+                        border: 'none',
+                        borderBottom: isMobile ? `1px solid #e2e8f0` : 'none',
+                        borderRight: isMobile && selectedProc?.id === proc.id ? `4px solid ${proc.color}` : isMobile ? '4px solid transparent' : 'none',
+                        outline: selectedProc?.id === proc.id && !isMobile ? `2px solid ${proc.color}` : 'none',
+                        boxShadow: !isMobile && selectedProc?.id === proc.id ? `0 4px 20px ${proc.color}25` : !isMobile ? '0 1px 4px rgba(0,0,0,0.05)' : 'none',
+                        cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.18s',
+                        width: '100%',
+                        backgroundColor: isMobile && selectedProc?.id === proc.id ? `${proc.color}08` : 'white',
+                      } as React.CSSProperties}
+                      onMouseEnter={e => { if (!isMobile && selectedProc?.id !== proc.id) { e.currentTarget.style.boxShadow = `0 4px 16px ${proc.color}20`; e.currentTarget.style.transform = 'translateY(-2px)'; } }}
+                      onMouseLeave={e => { if (!isMobile && selectedProc?.id !== proc.id) { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.05)'; e.currentTarget.style.transform = 'none'; } }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                        <div style={{ width: isMobile ? 36 : 42, height: isMobile ? 36 : 42, background: `${proc.color}15`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 18 : 20, flexShrink: 0, border: `1.5px solid ${proc.color}30` }}>
+                          {proc.icon}
                         </div>
-                        <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'Inter,sans-serif', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {lang === 'fr' ? proc.titleAr : proc.titleFr}
+                        <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+                          <div style={{ fontSize: isMobile ? 13 : 12.5, fontWeight: 800, color: '#0f2744', lineHeight: 1.4, marginBottom: 2 }}>
+                            {lang === 'ar' ? proc.titleAr : proc.titleFr}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'Inter,sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap' }}>
+                            {lang === 'fr' ? proc.titleAr : proc.titleFr}
+                          </div>
+                          {isMobile && (
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 5 }}>
+                              <span style={{ background: `${proc.color}12`, color: proc.color, borderRadius: 20, padding: '2px 7px', fontSize: 9, fontWeight: 700 }}>⏱ {proc.duration}</span>
+                              <span style={{ background: '#f0fdf4', color: '#15803d', borderRadius: 20, padding: '2px 7px', fontSize: 9, fontWeight: 700 }}>💰 {proc.cost}</span>
+                              {proc.online && <span style={{ background: '#eff6ff', color: '#1d4ed8', borderRadius: 20, padding: '2px 7px', fontSize: 9, fontWeight: 700 }}>🌐 En ligne</span>}
+                            </div>
+                          )}
+                        </div>
+                        {isMobile && (
+                          <div style={{ fontSize: 18, color: proc.color, flexShrink: 0, transition: 'transform 0.2s', transform: selectedProc?.id === proc.id ? 'rotate(90deg)' : 'none' }}>›</div>
+                        )}
+                      </div>
+                      {!isMobile && (
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
+                          <span style={{ background: `${proc.color}12`, color: proc.color, borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 700 }}>⏱ {proc.duration}</span>
+                          <span style={{ background: '#f0fdf4', color: '#15803d', borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 700 }}>💰 {proc.cost}</span>
+                          {proc.online && <span style={{ background: '#eff6ff', color: '#1d4ed8', borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 700 }}>🌐 En ligne</span>}
+                          {proc.law && <span style={{ background: '#fefce8', color: '#b45309', borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 700 }}>⚖️ قانوني</span>}
+                        </div>
+                      )}
+                    </button>
+
+                    {/* Inline Accordion Detail — Mobile Only */}
+                    {isMobile && selectedProc?.id === proc.id && (
+                      <div id={`proc-detail-${proc.id}`}
+                        style={{ background: 'white', borderRight: `4px solid ${proc.color}`, borderBottom: `2px solid ${proc.color}30`, overflow: 'hidden' }}>
+
+                        {/* Color header */}
+                        <div style={{ background: `linear-gradient(135deg, ${proc.color}, ${proc.color}cc)`, padding: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <span style={{ fontSize: 28 }}>{proc.icon}</span>
+                            <button onClick={() => setSelectedProc(null)}
+                              style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 20, width: 32, height: 32, cursor: 'pointer', color: 'white', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 900, color: 'white', lineHeight: 1.4 }}>
+                            {lang === 'ar' ? proc.titleAr : proc.titleFr}
+                          </div>
+                          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)', marginTop: 3, fontFamily: 'Inter,sans-serif' }}>
+                            {lang === 'fr' ? proc.titleAr : proc.titleFr}
+                          </div>
+                        </div>
+
+                        {/* Detail body */}
+                        <div style={{ padding: '14px 16px' }}>
+
+                          {/* Info grid */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                            <InfoBox icon="⏱" label={lang === 'ar' ? 'المدة' : 'Durée'} value={proc.duration} />
+                            <InfoBox icon="💰" label={lang === 'ar' ? 'التكلفة' : 'Coût'} value={proc.cost} />
+                            <div style={{ gridColumn: '1/-1' }}>
+                              <InfoBox icon="📍" label={lang === 'ar' ? 'الجهة المختصة' : "Où s'adresser"} value={lang === 'ar' ? proc.where : proc.whereFr} />
+                            </div>
+                            {proc.law && (
+                              <div style={{ gridColumn: '1/-1' }}>
+                                <InfoBox icon="⚖️" label={lang === 'ar' ? 'المرجع القانوني' : 'Référence légale'} value={proc.law} highlight />
+                              </div>
+                            )}
+                            {proc.online && (
+                              <div style={{ gridColumn: '1/-1' }}>
+                                <InfoBox icon="🌐" label={lang === 'ar' ? 'إلكترونياً' : 'En ligne'} value={proc.online} link />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.8, marginBottom: 14, padding: '10px 12px', background: `${proc.color}08`, borderRadius: 8, borderRight: `3px solid ${proc.color}` }}>
+                            {proc.description}
+                          </div>
+
+                          {/* Steps */}
+                          <div style={{ marginBottom: 14 }}>
+                            <SectionTitle icon="📋" color={proc.color} label={lang === 'ar' ? 'خطوات الإجراء' : 'Étapes'} />
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {proc.steps.map((s, si) => (
+                                <div key={si} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                                  <div style={{ width: 20, height: 20, background: proc.color, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 9, fontWeight: 900, flexShrink: 0 }}>{si + 1}</div>
+                                  <div>
+                                    <div style={{ fontSize: 11.5, color: '#1e293b', fontWeight: 600, lineHeight: 1.5 }}>{lang === 'ar' ? s.step.replace(/^\d+\.\s*/, '') : s.fr}</div>
+                                    <div style={{ fontSize: 9.5, color: '#94a3b8', fontFamily: 'Inter,sans-serif', marginTop: 1 }}>{lang === 'fr' ? s.step.replace(/^\d+\.\s*/, '') : s.fr}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Documents */}
+                          <div style={{ marginBottom: 12 }}>
+                            <SectionTitle icon="📂" color="#059669" label={lang === 'ar' ? 'الوثائق المطلوبة' : 'Documents requis'} />
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                              {proc.documents.map((doc, di) => (
+                                <div key={di} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '7px 10px', background: '#f0fdf4', borderRadius: 7, border: '1px solid #bbf7d0' }}>
+                                  <span style={{ color: '#15803d', fontSize: 12, flexShrink: 0 }}>✓</span>
+                                  <span style={{ fontSize: 11.5, color: '#1e293b', lineHeight: 1.5 }}>{doc}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Notes */}
+                          {proc.notes && (
+                            <div style={{ background: '#fffbeb', borderRadius: 9, padding: '11px 13px', border: '1px solid #fde68a' }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: '#d97706', marginBottom: 4 }}>💡 {lang === 'ar' ? 'ملاحظات مهمة' : 'Notes importantes'}</div>
+                              <div style={{ fontSize: 11.5, color: '#92400e', lineHeight: 1.8 }}>{proc.notes}</div>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                      <span style={{ background: `${proc.color}12`, color: proc.color, borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 700 }}>⏱ {proc.duration}</span>
-                      <span style={{ background: '#f0fdf4', color: '#15803d', borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 700 }}>💰 {proc.cost}</span>
-                      {proc.online && <span style={{ background: '#eff6ff', color: '#1d4ed8', borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 700 }}>🌐 En ligne</span>}
-                      {proc.law && <span style={{ background: '#fefce8', color: '#b45309', borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 700 }}>⚖️ قانوني</span>}
-                    </div>
-                  </button>
+                    )}
+                  </div>
                 ))}
               </div>
 
@@ -1307,8 +1432,8 @@ export default function AdminProcedures() {
           )}
         </div>
 
-        {/* Detail Panel */}
-        {selectedProc && (
+        {/* Detail Panel — Desktop Only */}
+        {selectedProc && !isMobile && (
           <div style={{ background: 'white', borderRadius: 14, border: `2px solid ${selectedProc.color}30`, overflow: 'hidden', boxShadow: `0 4px 24px ${selectedProc.color}15`, position: 'sticky', top: 80 }}>
             <div style={{ background: `linear-gradient(135deg, ${selectedProc.color}, ${selectedProc.color}bb)`, padding: '20px 22px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

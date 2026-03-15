@@ -26,6 +26,7 @@ import GeneralSettings from './components/GeneralSettings';
 import { applySEO, SEO_PAGES } from './seo/SEOHead';
 import { recordVisit } from './utils/analytics';
 
+
 type ServiceKey = 'procedures' | 'scanner' | 'writer' | 'cv' | 'letters' | 'invoices';
 type AppRoute = 'home' | 'admin' | 'user' | 'admin-login' | 'user-login' | 'service-page';
 type PublicModule = 'admin-procedures' | 'cin-scanner';
@@ -379,6 +380,75 @@ export function App() {
 }
 
 /* ════════════════════════════════════════════
+   ACCESS DENIED COMPONENT
+════════════════════════════════════════════ */
+function AccessDenied({ role }: { role: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      minHeight: '60vh', flexDirection: 'column', gap: 20,
+      fontFamily: "'Cairo', sans-serif",
+    }}>
+      <div style={{ fontSize: 64 }}>🔒</div>
+      <div style={{
+        background: 'white', borderRadius: 16, padding: '32px 48px',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.08)', textAlign: 'center',
+        border: '1px solid #fee2e2', maxWidth: 480,
+      }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: '#dc2626', marginBottom: 8 }}>
+          غير مصرح بالدخول
+        </div>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
+          هذه الصفحة مخصصة للمدير العام فقط (Superadmin)
+        </div>
+        <div style={{
+          background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8,
+          padding: '12px 16px', fontSize: 12, color: '#7f1d1d',
+        }}>
+          <div>👤 دورك الحالي: <strong>{role}</strong></div>
+          <div style={{ marginTop: 4, color: '#991b1b' }}>
+            تواصل مع المدير العام للحصول على الصلاحيات اللازمة
+          </div>
+        </div>
+        <div style={{
+          marginTop: 20, padding: '10px 16px', background: '#f8fafc',
+          borderRadius: 8, border: '1px solid #e2e8f0',
+          fontSize: 11, color: '#475569', fontFamily: 'Inter, sans-serif',
+        }}>
+          <strong>Accès refusé — Superadmin requis</strong><br />
+          Cette section est réservée exclusivement au Super Administrateur.
+        </div>
+      </div>
+      <div style={{
+        display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center',
+      }}>
+        {role === 'admin' && (
+          <>
+            <PermBadge label="✅ إدارة الأعضاء" />
+            <PermBadge label="✅ قبول التسجيلات" />
+            <PermBadge label="✅ إدارة النماذج" />
+            <PermBadge label="❌ الإعدادات العامة" error />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PermBadge({ label, error }: { label: string; error?: boolean }) {
+  return (
+    <span style={{
+      padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+      background: error ? '#fee2e2' : '#dcfce7',
+      color: error ? '#dc2626' : '#16a34a',
+      border: `1px solid ${error ? '#fca5a5' : '#86efac'}`,
+    }}>
+      {label}
+    </span>
+  );
+}
+
+/* ════════════════════════════════════════════
    AUTHENTICATED APP SHELL
 ════════════════════════════════════════════ */
 interface AuthAppProps {
@@ -401,7 +471,8 @@ function AuthenticatedApp({
   session, route, activeModule, navigate, history, refreshHistory,
   pendingCount, sidebarOpen, setSidebarOpen, onLogout, onSwitchToUser, onGoHome,
 }: AuthAppProps) {
-  const isAdmin = session.role === 'admin' || session.role === 'superadmin';
+  const role    = session.role;
+  const isAdmin = role === 'admin' || role === 'superadmin';
 
   return (
     <div dir="rtl" className="app-shell" style={{ fontFamily: 'var(--font-arabic)' }}>
@@ -475,15 +546,25 @@ function AuthenticatedApp({
               </button>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 9, padding: '4px 10px' }}>
-              <span style={{ fontSize: 14 }}>{session.avatar}</span>
+            {/* Superadmin settings quick button */}
+            {role === 'superadmin' && (
+              <button onClick={() => navigate('general-settings')} title="الإعدادات العامة"
+                style={{ padding:'4px 9px', background: activeModule==='general-settings' ? 'linear-gradient(135deg,#c8962c,#e8b84b)' : 'rgba(200,150,44,0.1)', border:'1px solid rgba(200,150,44,0.35)', borderRadius:7, cursor:'pointer', fontSize:14, color: activeModule==='general-settings' ? 'white' : '#c8962c' }}>
+                ⚙️
+              </button>
+            )}
+
+            <div style={{ display:'flex', alignItems:'center', gap:6, background:'#f8fafc', border:`1px solid ${role==='superadmin'?'rgba(200,150,44,0.3)':'#e2e8f0'}`, borderRadius:9, padding:'4px 10px' }}>
+              <span style={{ fontSize:14 }}>{session.avatar}</span>
               <div className="topbar-title">
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#0f2744', lineHeight: 1.2 }}>{session.name}</div>
-                <div style={{ fontSize: 9, color: '#94a3b8', fontFamily: 'Inter,sans-serif' }}>{session.role}</div>
+                <div style={{ fontSize:11, fontWeight:700, color:'#0f2744', lineHeight:1.2 }}>{session.name}</div>
+                <div style={{ fontSize:9, fontFamily:'Inter,sans-serif', fontWeight:700, color: role==='superadmin'?'#c8962c':role==='admin'?'#3b82f6':'#94a3b8' }}>
+                  {role==='superadmin'?'👑 Super Admin':role==='admin'?'🏛️ Admin':role==='editor'?'✍️ Éditeur':'👤 User'}
+                </div>
               </div>
               {isAdmin && (
                 <button onClick={() => navigate('user-management')} title="إدارة المستخدمين"
-                  style={{ padding: '3px 7px', background: '#dbeafe', color: '#1e40af', border: 'none', borderRadius: 5, fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
+                  style={{ padding:'3px 7px', background:'#dbeafe', color:'#1e40af', border:'none', borderRadius:5, fontSize:10, cursor:'pointer', fontFamily:'inherit', fontWeight:700 }}>
                   👥
                 </button>
               )}
@@ -504,16 +585,17 @@ function AuthenticatedApp({
 
         {/* PAGE CONTENT */}
         <div style={{ flex: 1 }}>
-          {activeModule === 'dashboard'            && <Dashboard onNavigate={navigate} history={history} session={session} pendingCount={pendingCount} />}
+          {activeModule === 'dashboard'            && <Dashboard onNavigate={navigate} pendingCount={pendingCount} />}
           {activeModule === 'public-writer'        && <PublicWriter onSave={refreshHistory} />}
           {activeModule === 'cv-generator'         && <CVGenerator onSave={refreshHistory} />}
           {activeModule === 'cin-scanner'          && <CINScanner onSave={refreshHistory} />}
           {activeModule === 'french-letters'       && <FrenchLetters onSave={refreshHistory} />}
           {activeModule === 'admin-procedures'     && <AdminProcedures />}
           {activeModule === 'invoice-generator'    && <InvoiceGenerator />}
-          {activeModule === 'user-management'      && isAdmin && <UserManagement session={session} />}
-          {activeModule === 'registration-manager' && isAdmin && <RegistrationManager session={session} />}
-          {activeModule === 'general-settings'     && isAdmin && <GeneralSettings />}
+          {activeModule === 'user-management'      && (role === 'admin' || role === 'superadmin') && <UserManagement session={session} />}
+          {activeModule === 'registration-manager' && (role === 'admin' || role === 'superadmin') && <RegistrationManager session={session} />}
+          {activeModule === 'general-settings'     && role === 'superadmin' && <GeneralSettings />}
+          {activeModule === 'general-settings'     && role !== 'superadmin' && <AccessDenied role={role} />}
         </div>
 
         {activeModule !== 'dashboard' &&

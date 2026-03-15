@@ -1,330 +1,267 @@
-/* ═══════════════════════════════════════════════════════════════
-   DASHBOARD — with Visit Analytics (daily/weekly/monthly)
-   + Mini bar chart for last 7 days
-   ═══════════════════════════════════════════════════════════════ */
-import { useEffect, useState } from 'react';
-import { Module, DocRecord } from '../types';
-import { formatDate } from '../utils/storage';
-import { ActiveSession } from '../utils/authService';
-import {
-  getDailyCount, getWeeklyCount, getMonthlyCount,
-  getTotalVisits, getLast7Days, getPeakDay, VisitRecord,
-} from '../utils/analytics';
 
-interface DashboardProps {
-  onNavigate: (m: Module) => void;
-  history: DocRecord[];
-  session?: ActiveSession;
-  pendingCount?: number;
+import { useState, useEffect } from 'react';
+import { Module } from '../types';
+import { getAnalytics, clearVisits, AnalyticsSummary } from '../utils/visitAnalytics';
+import { authService } from '../utils/authService';
+
+interface Props {
+  onNavigate : (m: Module) => void;
+  pendingCount: number;
 }
 
-const MODULES = [
-  { id: 'public-writer' as Module, icon: '✍️', titleAr: 'الكاتب العمومي', titleFr: 'Rédacteur Public', descAr: 'طلبات إدارية، تعهدات، تصاريح، عقود، وكالات، مراسلات رسمية', color: '#2563a8', bg: '#eff6ff', border: '#bfdbfe' },
-  { id: 'cv-generator' as Module, icon: '📄', titleAr: 'مولّد السيرة الذاتية', titleFr: 'Générateur de CV', descAr: 'إنشاء سيرة ذاتية احترافية بالفرنسية مع قوالب متعددة', color: '#059669', bg: '#f0fdf4', border: '#bbf7d0' },
-  { id: 'cin-scanner' as Module, icon: '🪪', titleAr: 'Scan Studio', titleFr: 'Scanner CIN', descAr: 'مسح وتحسين وطباعة بطاقة التعريف الوطنية', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  { id: 'french-letters' as Module, icon: '📝', titleAr: 'الرسائل الفرنسية', titleFr: 'Lettres en Français', descAr: 'طلب تدريب، استقالة، طلب إداري، مراسلة رسمية', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
-  { id: 'admin-procedures' as Module, icon: '🏛️', titleAr: 'المساطر الإدارية', titleFr: 'Procédures Administratives', descAr: 'دليل شامل للإجراءات الإدارية: CIN، رخصة، جواز سفر', color: '#dc2626', bg: '#fff1f2', border: '#fecaca' },
-  { id: 'invoice-generator' as Module, icon: '🧾', titleAr: 'الفواتير والحسابات', titleFr: 'Factures & Devis', descAr: 'إنشاء فواتير، devis، حساب TVA 20%، تحويل المبلغ إلى حروف', color: '#059669', bg: '#f0fdf4', border: '#a7f3d0' },
+const MODULES: { key: Module; icon: string; label: string; color: string; desc: string; adminOnly?: boolean }[] = [
+  { key: 'public-writer',     icon: '✍️',  label: 'الكاتب العمومي',       color: '#0f2744', desc: 'إنشاء وثائق رسمية' },
+  { key: 'cv-generator',      icon: '📄',  label: 'مولد السيرة الذاتية',  color: '#1a5276', desc: 'CV بالفرنسية' },
+  { key: 'cin-scanner',       icon: '🪪',  label: 'Scan Studio',           color: '#0e7490', desc: 'مسح الوثائق' },
+  { key: 'french-letters',    icon: '📝',  label: 'الرسائل الفرنسية',     color: '#1e40af', desc: 'رسائل رسمية' },
+  { key: 'admin-procedures',  icon: '🏛️',  label: 'المساطر الإدارية',     color: '#065f46', desc: 'إجراءات إدارية' },
+  { key: 'invoice-generator', icon: '🧾',  label: 'الفواتير',              color: '#92400e', desc: 'Factures & Devis' },
+  { key: 'user-management',   icon: '👥',  label: 'إدارة المستخدمين',     color: '#4a044e', desc: 'الأعضاء والصلاحيات', adminOnly: true },
+  { key: 'registration-manager', icon: '📬', label: 'طلبات التسجيل',      color: '#7f1d1d', desc: 'قبول/رفض الطلبات', adminOnly: true },
+  { key: 'general-settings',  icon: '⚙️',  label: 'الإعدادات العامة',     color: '#1c1917', desc: 'إعدادات الموقع', adminOnly: true },
 ];
 
-/* ── Mini Bar Chart ── */
-function MiniBarChart({ data }: { data: VisitRecord[] }) {
-  const max = Math.max(...data.map(d => d.count), 1);
-  const days = ['أحد', 'إث', 'ثل', 'أر', 'خم', 'جم', 'سب'];
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 60, paddingTop: 6 }}>
-      {data.map((d, i) => {
-        const pct = Math.max(4, Math.round((d.count / max) * 100));
-        const isToday = i === data.length - 1;
-        const dow = new Date(d.date).getDay();
-        return (
-          <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <div style={{ fontSize: 9, fontWeight: isToday ? 800 : 400, color: isToday ? '#2563a8' : '#94a3b8' }}>
-              {d.count > 0 ? d.count : ''}
-            </div>
-            <div style={{
-              width: '100%', borderRadius: '4px 4px 0 0',
-              background: isToday
-                ? 'linear-gradient(180deg,#2563a8,#3b82f6)'
-                : d.count > 0 ? 'linear-gradient(180deg,#93c5fd,#bfdbfe)' : '#f1f5f9',
-              height: `${pct}%`,
-              transition: 'height .4s ease',
-              minHeight: 4,
-            }} title={`${d.date}: ${d.count} زيارة`} />
-            <div style={{ fontSize: 8, color: isToday ? '#2563a8' : '#cbd5e1', fontWeight: isToday ? 800 : 400 }}>
-              {days[dow]}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+const LANG: Record<string, string> = { ar: 'العربية', fr: 'الفرنسية', en: 'الإنجليزية' };
 
-/* ── Analytics Card ── */
-function AnalyticsPanel({ history }: { history: DocRecord[] }) {
-  const [daily, setDaily] = useState(0);
-  const [weekly, setWeekly] = useState(0);
-  const [monthly, setMonthly] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [last7, setLast7] = useState<VisitRecord[]>([]);
-  const [peak, setPeak] = useState<VisitRecord | null>(null);
-  const [tab, setTab] = useState<'visits' | 'docs'>('visits');
+export default function Dashboard({ onNavigate, pendingCount }: Props) {
+  const session     = authService.getUserSession() || authService.getAdminSession();
+  const isAdmin     = session?.role === 'admin' || session?.role === 'superadmin';
+  const isSuperAdmin = session?.role === 'superadmin';
+
+  const [stats, setStats]     = useState<AnalyticsSummary | null>(null);
+  const [tab, setTab]         = useState<'overview' | 'regions' | 'recent'>('overview');
+  const [cleared, setCleared] = useState(false);
 
   useEffect(() => {
-    setDaily(getDailyCount());
-    setWeekly(getWeeklyCount());
-    setMonthly(getMonthlyCount());
-    setTotal(getTotalVisits());
-    setLast7(getLast7Days());
-    setPeak(getPeakDay());
-  }, []);
+    setStats(getAnalytics());
+    const t = setInterval(() => setStats(getAnalytics()), 30000);
+    return () => clearInterval(t);
+  }, [cleared]);
 
-  const stats = [
-    { label: 'اليوم', labelFr: 'Aujourd\'hui', value: daily, icon: '📅', color: '#2563a8', bg: '#eff6ff' },
-    { label: 'هذا الأسبوع', labelFr: 'Cette Semaine', value: weekly, icon: '📆', color: '#059669', bg: '#f0fdf4' },
-    { label: 'هذا الشهر', labelFr: 'Ce Mois', value: monthly, icon: '🗓️', color: '#7c3aed', bg: '#f5f3ff' },
-    { label: 'إجمالي الزيارات', labelFr: 'Total Visites', value: total, icon: '🌐', color: '#d97706', bg: '#fffbeb' },
-  ];
+  const visibleModules = MODULES.filter(m => !m.adminOnly || isAdmin);
 
-  // Docs per module last 30 days
-  const now = Date.now();
-  const last30 = history.filter(d => now - new Date(d.createdAt).getTime() < 30 * 24 * 60 * 60 * 1000);
-  const docsPerModule = MODULES.map(m => ({
-    ...m,
-    count: last30.filter(d => d.module === m.id).length,
-  })).sort((a, b) => b.count - a.count);
+  const maxDay = stats ? Math.max(...stats.byDay.map(d => d.count), 1) : 1;
+  const maxHour = stats ? Math.max(...stats.byHour.map(h => h.count), 1) : 1;
 
   return (
-    <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid #e2e8f0', overflow: 'hidden', marginBottom: 28, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-      {/* Panel header */}
-      <div style={{ padding: '16px 22px', background: 'linear-gradient(135deg,#0f2744,#1a3a5c)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20 }}>📊</span>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: 'white' }}>إحصائيات الزيارات</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontFamily: 'Inter, sans-serif' }}>Statistiques de Visites</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {([['visits', '📈 الزيارات'], ['docs', '📋 الوثائق']] as const).map(([id, label]) => (
-            <button key={id} onClick={() => setTab(id)} style={{
-              padding: '5px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
-              background: tab === id ? 'rgba(255,255,255,0.2)' : 'transparent',
-              color: tab === id ? 'white' : 'rgba(255,255,255,0.4)',
-              fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
-            }}>{label}</button>
+    <div style={{ padding: '24px', maxWidth: 1100, margin: '0 auto', direction: 'rtl' }}>
+
+      {/* ── admin quick bar ─────────────────────────────────────────────── */}
+      {isAdmin && (
+        <div style={{ background: 'linear-gradient(135deg,#0f2744,#1a3a5c)', borderRadius: 12, padding: '14px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ color: '#c8962c', fontWeight: 700, fontSize: 14 }}>⚡ لوحة الإدارة</span>
+          {[
+            { key: 'user-management' as Module,      icon: '👥', label: 'المستخدمون' },
+            { key: 'registration-manager' as Module, icon: '📬', label: `الطلبات${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
+            ...(isSuperAdmin ? [{ key: 'general-settings' as Module, icon: '⚙️', label: 'الإعدادات' }] : []),
+          ].map(b => (
+            <button key={b.key} onClick={() => onNavigate(b.key)}
+              style={{ background: 'rgba(200,150,44,0.15)', border: '1px solid rgba(200,150,44,0.3)', color: '#f5d78e', borderRadius: 8, padding: '6px 14px', fontSize: 13, cursor: 'pointer' }}>
+              {b.icon} {b.label}
+            </button>
           ))}
         </div>
-      </div>
-
-      {tab === 'visits' && (
-        <div style={{ padding: '18px 22px' }}>
-          {/* Stats row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
-            {stats.map((s, i) => (
-              <div key={i} style={{ background: s.bg, borderRadius: 12, padding: '14px 16px', border: `1px solid ${s.color}22` }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 18 }}>{s.icon}</span>
-                  <span style={{ fontSize: 24, fontWeight: 900, color: s.color }}>{s.value}</span>
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{s.label}</div>
-                <div style={{ fontSize: 9, color: '#94a3b8', fontFamily: 'Inter, sans-serif' }}>{s.labelFr}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Bar chart */}
-          <div style={{ background: '#f8fafc', borderRadius: 12, padding: '14px 16px', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>آخر 7 أيام</div>
-              <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'Inter, sans-serif' }}>
-                {peak && `ذروة: ${peak.count} زيارة (${peak.date})`}
-              </div>
-            </div>
-            <MiniBarChart data={last7} />
-          </div>
-        </div>
       )}
 
-      {tab === 'docs' && (
-        <div style={{ padding: '18px 22px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 14 }}>
-            الوثائق المنشأة — آخر 30 يوم
-            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400, marginRight: 8, fontFamily: 'Inter, sans-serif' }}>
-              (Total: {last30.length})
-            </span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {docsPerModule.map(m => {
-              const pct = last30.length > 0 ? Math.round((m.count / Math.max(last30.length, 1)) * 100) : 0;
-              return (
-                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 16, width: 24, textAlign: 'center' }}>{m.icon}</span>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', width: 130, flexShrink: 0 }}>{m.titleAr}</div>
-                  <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: m.color, borderRadius: 4, transition: 'width .5s ease', minWidth: m.count > 0 ? 8 : 0 }} />
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: m.color, width: 28, textAlign: 'right' }}>{m.count}</div>
-                </div>
-              );
-            })}
-          </div>
-          {last30.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontSize: 13 }}>
-              لا توجد وثائق في آخر 30 يوم
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ════════════════════════════
-   MAIN DASHBOARD
-   ════════════════════════════ */
-export default function Dashboard({ onNavigate, history, session, pendingCount }: DashboardProps) {
-  const isAdmin = session?.role === 'admin' || session?.role === 'superadmin';
-  const recentDocs = history.slice(0, 6);
-
-  const allModules = [
-    ...MODULES,
-    ...(isAdmin ? [{
-      id: 'user-management' as Module, icon: '👥',
-      titleAr: 'إدارة المستخدمين', titleFr: 'Gestion des Utilisateurs',
-      descAr: 'إدارة الحسابات، الصلاحيات، سجل المراقبة، إعدادات النظام',
-      color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd',
-    }] : []),
-    ...(isAdmin ? [{
-      id: 'homepage-control' as Module, icon: '🏠',
-      titleAr: 'التحكم في الصفحة الرئيسية', titleFr: 'Contrôle Homepage',
-      descAr: 'تخصيص محتوى وتصميم الصفحة الرئيسية للموقع',
-      color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe',
-    }] : []),
-    ...(isAdmin && (pendingCount ?? 0) > 0 ? [{
-      id: 'registration-manager' as Module, icon: '📬',
-      titleAr: `طلبات التسجيل (${pendingCount})`, titleFr: 'Demandes d\'inscription',
-      descAr: 'مراجعة وقبول أو رفض طلبات تسجيل المستخدمين الجدد',
-      color: '#dc2626', bg: '#fff1f2', border: '#fecaca',
-    }] : []),
-    ...(isAdmin ? [{
-      id: 'general-settings' as Module, icon: '⚙️',
-      titleAr: 'الإعدادات العامة', titleFr: 'Paramètres Généraux',
-      descAr: 'إدارة الخدمات، الإعلانات، الصفحة الرئيسية وإعدادات النظام',
-      color: '#c8962c', bg: '#fffbeb', border: '#fde68a',
-    }] : []),
-  ];
-
-  return (
-    <div className="animate-fadeIn module-page" style={{ padding: '24px 28px' }}>
-
-      {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg,#c8962c,#e8b84b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>⚜️</div>
-          <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800, color: '#0f2744', margin: 0 }}>نظام خدمات المكتب</h1>
-            <p style={{ color: '#64748b', fontSize: 13, margin: 0, fontFamily: 'Inter, sans-serif' }}>
-              Système de Gestion des Services — {session?.name && <span style={{ color: '#2563a8', fontWeight: 600 }}>مرحباً، {session.name}</span>}
-            </p>
-          </div>
-        </div>
-        <div className="moroccan-ornament" />
-      </div>
-
-      {/* Analytics Panel (admin only) */}
-      {isAdmin && <AnalyticsPanel history={history} />}
-
-      {/* Admin Quick Access Bar */}
-      {isAdmin && (
-        <div style={{ background: 'linear-gradient(135deg,#0f2744,#1a3a5c)', borderRadius: 14, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-            <span style={{ fontSize: 24 }}>⚙️</span>
-            <div>
-              <div style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>لوحة الإدارة</div>
-              <div style={{ color: '#94a3b8', fontSize: 10, fontFamily: 'Inter,sans-serif' }}>Panneau d'Administration</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {[
-              { id: 'general-settings' as Module, icon: '⚙️', label: 'الإعدادات', color: '#c8962c' },
-              { id: 'user-management' as Module,  icon: '👥', label: 'المستخدمون', color: '#38bdf8' },
-              { id: 'registration-manager' as Module, icon: '📬', label: 'التسجيلات', color: '#fb923c' },
-            ].map(btn => (
-              <button key={btn.id} onClick={() => onNavigate(btn.id)} style={{
-                padding: '7px 14px', borderRadius: 9, border: `1px solid ${btn.color}44`,
-                background: `${btn.color}18`, color: btn.color,
-                fontFamily: 'inherit', fontWeight: 700, fontSize: 11, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 5, transition: 'all .15s',
-              }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `${btn.color}30`; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = `${btn.color}18`; }}
-              >
-                <span>{btn.icon}</span> {btn.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Modules Grid */}
-      <h2 style={{ fontSize: 17, fontWeight: 700, color: '#0f2744', marginBottom: 14 }}>
-        الوحدات — <span style={{ fontSize: 13, color: '#64748b', fontFamily: 'Inter, sans-serif', fontWeight: 400 }}>Modules Disponibles</span>
-      </h2>
-      <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 28 }}>
-        {allModules.map(mod => (
-          <button key={mod.id} onClick={() => onNavigate(mod.id)} style={{
-            background: mod.bg, border: `1.5px solid ${mod.border}`, borderRadius: 14,
-            padding: '20px', cursor: 'pointer', textAlign: 'right', transition: 'all 0.18s',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.04)', fontFamily: 'inherit', position: 'relative', overflow: 'hidden',
-          }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 8px 24px ${mod.border}`; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = ''; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'; }}
-          >
-            <div style={{ fontSize: 32, marginBottom: 10 }}>{mod.icon}</div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: mod.color, marginBottom: 3 }}>{mod.titleAr}</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: mod.color, opacity: 0.7, fontFamily: 'Inter, sans-serif', marginBottom: 8 }}>{mod.titleFr}</div>
-            <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.6 }}>{mod.descAr}</div>
+      {/* ── module grid ─────────────────────────────────────────────────── */}
+      <h2 style={{ color: '#0f2744', fontWeight: 700, fontSize: 18, marginBottom: 16 }}>🗂️ الخدمات</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 14, marginBottom: 32 }}>
+        {visibleModules.map(m => (
+          <button key={m.key} onClick={() => onNavigate(m.key)}
+            style={{ background: '#fff', border: `2px solid ${m.color}22`, borderRadius: 12, padding: '18px 12px', cursor: 'pointer', textAlign: 'center', transition: 'all .2s', position: 'relative' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 8px 24px ${m.color}33`; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = ''; (e.currentTarget as HTMLButtonElement).style.boxShadow = ''; }}>
+            {m.key === 'registration-manager' && pendingCount > 0 && (
+              <span style={{ position: 'absolute', top: 8, left: 8, background: '#dc2626', color: '#fff', borderRadius: '50%', width: 20, height: 20, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{pendingCount}</span>
+            )}
+            <div style={{ fontSize: 28, marginBottom: 8 }}>{m.icon}</div>
+            <div style={{ color: m.color, fontWeight: 600, fontSize: 13 }}>{m.label}</div>
+            <div style={{ color: '#6b7280', fontSize: 11, marginTop: 4 }}>{m.desc}</div>
           </button>
         ))}
       </div>
 
-      {/* Recent Documents */}
-      {recentDocs.length > 0 && (
-        <div>
-          <h2 style={{ fontSize: 17, fontWeight: 700, color: '#0f2744', marginBottom: 14 }}>
-            آخر الوثائق — <span style={{ fontSize: 13, color: '#64748b', fontFamily: 'Inter, sans-serif', fontWeight: 400 }}>Documents Récents</span>
-          </h2>
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <table className="history-table">
-              <thead><tr><th>الوثيقة</th><th>النوع</th><th>الوحدة</th><th>التاريخ</th></tr></thead>
-              <tbody>
-                {recentDocs.map(doc => (
-                  <tr key={doc.id}>
-                    <td style={{ fontWeight: 600 }}>{doc.title}</td>
-                    <td><span className="badge badge-blue">{doc.type}</span></td>
-                    <td>{moduleLabel(doc.module)}</td>
-                    <td style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#64748b' }}>{formatDate(doc.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* ── visit analytics (admin only) ───────────────────────────────── */}
+      {isAdmin && stats && (
+        <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 16px #0002', overflow: 'hidden' }}>
+
+          {/* header */}
+          <div style={{ background: 'linear-gradient(135deg,#0f2744,#1a3a5c)', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>📊 إحصائيات الزيارات</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['overview', 'regions', 'recent'] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)}
+                  style={{ background: tab === t ? '#c8962c' : 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
+                  {t === 'overview' ? '📈 عام' : t === 'regions' ? '🗺️ مناطق' : '🕐 أخيرة'}
+                </button>
+              ))}
+              <button onClick={() => { clearVisits(); setCleared(c => !c); }}
+                style={{ background: 'rgba(220,38,38,0.3)', color: '#fca5a5', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>
+                🗑️ مسح
+              </button>
+            </div>
+          </div>
+
+          {/* summary cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 12, padding: '16px 20px' }}>
+            {[
+              { label: 'اليوم',      value: stats.today,       color: '#0f2744' },
+              { label: 'الأمس',      value: stats.yesterday,   color: '#1a5276' },
+              { label: 'الأسبوع',    value: stats.week,        color: '#065f46' },
+              { label: 'الشهر',      value: stats.month,       color: '#92400e' },
+              { label: 'الإجمالي',   value: stats.total,       color: '#4a044e' },
+              { label: 'زوار جدد',   value: stats.newVisitors, color: '#0e7490' },
+              { label: 'عائدون',     value: stats.returning,   color: '#7f1d1d' },
+            ].map(c => (
+              <div key={c.label} style={{ background: `${c.color}11`, border: `1px solid ${c.color}22`, borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: c.color }}>{c.value}</div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{c.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ padding: '0 20px 20px' }}>
+
+            {/* ── OVERVIEW TAB ─────────────────────────────── */}
+            {tab === 'overview' && (
+              <>
+                {/* 14-day bar chart */}
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>📅 آخر 14 يوم</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 100, background: '#f8fafc', borderRadius: 10, padding: '10px 8px', overflowX: 'auto' }}>
+                    {stats.byDay.map(d => {
+                      const h = Math.max(4, Math.round((d.count / maxDay) * 80));
+                      const isToday = d.date === new Date().toISOString().slice(0, 10);
+                      return (
+                        <div key={d.date} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: '0 0 auto', minWidth: 28 }} title={`${d.date}: ${d.count} زيارة`}>
+                          <span style={{ fontSize: 9, color: '#6b7280' }}>{d.count || ''}</span>
+                          <div style={{ width: 22, height: h, background: isToday ? '#c8962c' : '#0f2744', borderRadius: '4px 4px 0 0', opacity: isToday ? 1 : 0.7 }} />
+                          <span style={{ fontSize: 8, color: '#9ca3af', writingMode: 'vertical-rl' }}>{d.date.slice(5)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* hours heatmap */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>⏰ توزيع الساعات</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 4 }}>
+                    {stats.byHour.map(h => {
+                      const opacity = Math.max(0.08, h.count / maxHour);
+                      return (
+                        <div key={h.hour} title={`${h.hour}:00 — ${h.count} زيارة`}
+                          style={{ background: `rgba(15,39,68,${opacity})`, borderRadius: 4, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: opacity > 0.5 ? '#fff' : '#0f2744' }}>
+                          {h.hour}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* languages */}
+                {stats.byLang.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>🌐 اللغات</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {stats.byLang.map(l => (
+                        <span key={l.lang} style={{ background: '#e0f2fe', color: '#0369a1', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
+                          {LANG[l.lang] || l.lang} — {l.count}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ── REGIONS TAB ──────────────────────────────── */}
+            {tab === 'regions' && (
+              <>
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>🗺️ المناطق</div>
+                  {stats.byRegion.length === 0 ? (
+                    <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 20 }}>لا توجد بيانات مناطق بعد</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {stats.byRegion.map((r, i) => {
+                        const pct = Math.round((r.count / stats.total) * 100);
+                        return (
+                          <div key={r.region} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ width: 20, fontSize: 12, color: '#6b7280', textAlign: 'center' }}>{i + 1}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                                <span style={{ fontSize: 13, color: '#111827', fontWeight: 500 }}>{r.region}</span>
+                                <span style={{ fontSize: 12, color: '#6b7280' }}>{r.count} ({pct}%)</span>
+                              </div>
+                              <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#0f2744,#1a5276)', borderRadius: 3 }} />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>🏙️ المدن</div>
+                  {stats.byCity.length === 0 ? (
+                    <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 20 }}>لا توجد بيانات مدن بعد</div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 8 }}>
+                      {stats.byCity.map(c => (
+                        <div key={c.city} style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 13, color: '#374151' }}>📍 {c.city}</span>
+                          <span style={{ background: '#0f2744', color: '#fff', borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{c.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* ── RECENT TAB ───────────────────────────────── */}
+            {tab === 'recent' && (
+              <div style={{ overflowX: 'auto' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>🕐 آخر الزيارات</div>
+                {stats.recent.length === 0 ? (
+                  <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 20 }}>لا توجد زيارات مسجلة بعد</div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9' }}>
+                        {['التاريخ', 'الساعة', 'المنطقة', 'المدينة', 'اللغة', 'النوع'].map(h => (
+                          <th key={h} style={{ padding: '8px 10px', color: '#374151', fontWeight: 600, textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.recent.map((v, i) => (
+                        <tr key={v.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                          <td style={{ padding: '7px 10px', color: '#374151' }}>{v.date}</td>
+                          <td style={{ padding: '7px 10px', color: '#374151' }}>{v.hour}:00</td>
+                          <td style={{ padding: '7px 10px', color: '#374151' }}>{v.region}</td>
+                          <td style={{ padding: '7px 10px', color: '#374151' }}>{v.city}</td>
+                          <td style={{ padding: '7px 10px', color: '#374151' }}>{LANG[v.lang] || v.lang}</td>
+                          <td style={{ padding: '7px 10px' }}>
+                            <span style={{ background: v.isNew ? '#dcfce7' : '#e0f2fe', color: v.isNew ? '#166534' : '#0369a1', borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+                              {v.isNew ? '🆕 جديد' : '🔄 عائد'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
           </div>
         </div>
       )}
     </div>
   );
-}
-
-function moduleLabel(m: Module): string {
-  const map: Partial<Record<Module, string>> = {
-    dashboard: 'الرئيسية', 'public-writer': 'كاتب عمومي',
-    'cv-generator': 'سيرة ذاتية', 'cin-scanner': 'بطاقة CIN',
-    'french-letters': 'رسائل فرنسية', 'admin-procedures': 'مساطر إدارية',
-    'user-management': 'إدارة المستخدمين', 'registration-manager': 'طلبات التسجيل',
-    'invoice-generator': 'الفواتير', 'homepage-control': 'الصفحة الرئيسية',
-    'general-settings': 'الإعدادات العامة',
-  };
-  return map[m] || m;
 }
